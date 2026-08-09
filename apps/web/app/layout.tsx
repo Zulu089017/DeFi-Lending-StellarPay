@@ -60,7 +60,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 <p>© 2026 StellarPay. Built on Stellar.</p>
                 <p>
                   Powered by Soroban · Horizon ·{" "}
-                  <a className="hover:text-primary" href="https://github.com/stellar-payment-gateway/stellar-payment-gateway-sdk-main">GitHub</a>
+                  <a className="hover:text-primary" href="https://github.com/Zulu089017/DeFi-Lending-Platform">GitHub</a>
                 </p>
               </div>
             </footer>

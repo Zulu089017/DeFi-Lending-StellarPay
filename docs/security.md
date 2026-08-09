@@ -52,9 +52,16 @@ listed here so they cannot be forgotten:
       not a raw `keccak256`. **Closed (2026-01)** — `Bridge` now inherits
       `EIP712Upgradeable` and `_hashTypedDataV4` replaces the raw digest; see
       `docs/invariants.md` § 7 (B-7) and `CHANGELOG.md`.
-- [ ] The off-chain `bridge` service should use **multi-attester signing** with
+- [x] The off-chain `bridge` service should use **multi-attester signing** with
       **staggered key release** (e.g. one key in HSM, one in cold storage, one
-      on a hot server).
+      on a hot server). **Closed (2026-08)** — The lending controller now stores
+      a `BridgeSet` (Vec of ed25519 pubkeys + threshold) and `require_bridge`
+      verifies ≥ threshold distinct attestations sorted by key index. The
+      off-chain signer (`services/payment/src/attest/signer.ts`) already
+      collects ≥ threshold signatures. The deploy script initializes with 3
+      attester keys and a 2-of-3 threshold. The EVM `Bridge.sol` already
+      enforced 2-of-N attester multisig (B-3, B-4). See `docs/deployment.md` § 8
+      for key-storage recommendations (HSM, cold storage, hot server).
 - [x] The `oracle` should aggregate from at least two independent publishers and
       use a **median** rather than accepting the first reported value. **Closed
       (2026-08)** — Per-publisher storage, `min_publishers` config (default 2),
@@ -80,13 +87,36 @@ listed here so they cannot be forgotten:
 
 ## Audit
 
-A formal audit by an independent firm is required before any non-trivial TVL is
-deployed. Recommended firms:
+### Plan (for SCF Wave 8 grant)
 
-- Trail of Bits
-- OpenZeppelin
-- Certora
-- Spearbit
+A formal audit by an independent firm is required before any non-trivial TVL is
+deployed. The current plan:
+
+| Item                 | Detail                                                                                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Firm**             | Trail of Bits (primary); Halborn as backup                                                                                                                |
+| **Scope**            | All 6 Soroban contracts (~2,500 lines Rust), Bridge.sol (~400 lines Solidity), bridge middleware (~800 lines TypeScript), relayer (~200 lines TypeScript) |
+| **Estimated cost**   | $120,000–$180,000 (based on ToB public pricing for comparable protocols)                                                                                  |
+| **Timeline**         | 8–10 weeks from engagement kickoff to final report                                                                                                        |
+| **Target start**     | Q1 2027 (after grant funding is secured)                                                                                                                  |
+| **Grant allocation** | ~60–70% of requested SCF Wave 8 funds earmarked for the audit                                                                                             |
+
+**Why Trail of Bits:** They have deep Rust/WASM expertise (critical for
+Soroban), ECDSA/Ed25519 signature verification experience (core to our bridge
+security), and a track record of auditing cross-chain protocols. Halborn is the
+backup if ToB's availability doesn't align.
+
+**Pre-audit requirements (from `docs/audit-checklist.md`):**
+
+- [x] Architecture, invariants, threat model, and deployment docs complete
+- [x] 26 invariant tests passing (lending pool + liquidation)
+- [x] Cross-contract integration tests (wrap → supply → borrow → liquidate)
+- [x] Fuzz tests for financial math
+- [x] Static analysis (clippy deny, Slither)
+- [ ] E2E testnet flow (Sepolia → Stellar Testnet)
+- [ ] Attester keys in HSM/KMS (not plaintext env vars)
+- [ ] Disaster recovery runbook tested
+- [ ] Multi-attester signing implemented (see Open TODOs below)
 
 ## Bug bounty
 

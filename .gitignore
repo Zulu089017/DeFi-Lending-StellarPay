@@ -70,3 +70,5 @@ infra/data/
 # ────── DB dumps ──────
 *.sql.gz
 *.dump
+.vercel
+.env*

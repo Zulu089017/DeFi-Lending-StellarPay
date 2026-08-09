@@ -6,14 +6,14 @@ VERSION = "2.0.0"
 NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
 
 # Signing key used for SEP-10/SEP-45 authentication (protocol admin).
-SIGNING_KEY = "GCRYCZKNP7LC6EXKGKMGBBS6VDGIU5SCMFNXTESOIQUSWYBG3NDXR5YA"
+SIGNING_KEY = "GA6ZXOF7TP3VSUHTZEKBEWW5HYIQRJJ25TJ45YRVAQXLZEEVFY6PJEZY"
 
 # Accounts controlled by the StellarPay domain (admin + bridge attesters).
 ACCOUNTS = [
-  "GCRYCZKNP7LC6EXKGKMGBBS6VDGIU5SCMFNXTESOIQUSWYBG3NDXR5YA",
-  "GATELQLPPI4H4DDWLY3ADVE2BU43IGUY3J7OKMH34WQZF7ZKZCCT5D27",
-  "GC4D2LDFCDUKKX3BLD7CQRI3C467CSWCVOIPNQL7VRBEJUI2WMTQZDYC",
-  "GCNQZFFNC6MV2L2PUDBJRNBWLXZUB3IJ7EQXKJTUHNE6ZCGQPYBU4KIW",
+  "GA6ZXOF7TP3VSUHTZEKBEWW5HYIQRJJ25TJ45YRVAQXLZEEVFY6PJEZY",
+  "GDYEJQJQDCIWZGMVPXCSXUVW3TGUH2JERXWORBRXKLDF4ZUIAQCE5DXO",
+  "GBLZVFSHNMAJW5IJLLEKSCVJVJBVUEGZ5DXUARG4CPDOKHQ7B3EFYG4W",
+  "GCPQMX62ANCNTO3VEOSGVRCQLXNWABMG6XDTDZICNBSLUSEWMUZD46PE",
 ]
 
 [DOCUMENTATION]
@@ -23,7 +23,7 @@ ORG_URL = "https://spg.xyz"
 ORG_DESCRIPTION = "Cross-chain lending protocol settled on Stellar with automated liquidation."
 ORG_OFFICIAL_EMAIL = "hello@spg.xyz"
 ORG_TWITTER = "spg_xyz"
-ORG_GITHUB = "https://github.com/stellar-payment-gateway/stellar-payment-gateway-sdk-main"
+ORG_GITHUB = "https://github.com/Zulu089017/DeFi-Lending-Platform"
 
 # StellarPay does not run a Stellar validator; bridge attester keys are listed
 # under ACCOUNTS above. (SEP-1 [[PRINCIPALS]] is reserved for personal info and
@@ -31,7 +31,7 @@ ORG_GITHUB = "https://github.com/stellar-payment-gateway/stellar-payment-gateway
 
 [[CURRENCIES]]
 code = "wETH"
-contract = "CDFM46L5MR6HBMS524K6JD45UXPPMVITWYENAQQT5EHZT6UNU4XHSUI4"
+contract = "CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL"
 status = "test"
 display_decimals = 4
 name = "Wrapped Ether (StellarPay)"
@@ -39,7 +39,7 @@ desc = "Wrapped ETH bridged from Ethereum mainnet via the StellarPay bridge."
 
 [[CURRENCIES]]
 code = "wUSDC"
-contract = "CDBDXFPIOWZMNXQBOZAAOH3NLBB5OG4TSGIO3PTUCS3MDXBUKEID5NNC"
+contract = "CCVDMRJYATZE6Y4C74PA4UZREV3TWASUL34XKYJ2RJB226ZZOJYAK67M"
 status = "test"
 display_decimals = 6
 name = "Wrapped USDC (StellarPay)"

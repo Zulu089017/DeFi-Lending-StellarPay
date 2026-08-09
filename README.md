@@ -4,7 +4,8 @@
 > on Stellar's ultra-fast, low-fee network.
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-scaffold-yellow.svg)](docs/security.md)
+[![Status](https://img.shields.io/badge/status-pre--audit_|_testnet_only-yellow.svg)](docs/security.md)
+[![Audit](https://img.shields.io/badge/Audit-Planned_Q1_2027-lightgrey.svg)](docs/security.md#audit)
 [![Soroban](https://img.shields.io/badge/Soroban-27-blueviolet.svg)](contracts/Cargo.toml)
 [![Solidity](https://img.shields.io/badge/Solidity-%5E0.8.24-363636.svg)](contracts/hardhat.config.ts)
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF.svg)](.github/workflows/ci.yml)
@@ -105,8 +106,8 @@ StellarPay/
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/stellar-payment-gateway/stellar-payment-gateway-sdk-main
-cd stellar-payment-gateway-sdk-main
+git clone https://github.com/Zulu089017/DeFi-Lending-Platform
+cd DeFi-Lending-Platform
 pnpm install
 ```
 
