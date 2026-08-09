@@ -86,20 +86,25 @@ export function payloadHash(args: {
 
 /** Sign the payload with each attester's ed25519 secret key, collecting
  *  up to `ATTESTER_THRESHOLD` signatures. Returns the signatures as
- *  hex strings (64 bytes each) ready to be packed into a `BytesN<64>`
- *  Soroban argument by the on-chain wrapper. */
-export async function collectSignatures(payload: Uint8Array): Promise<string[]> {
-  const sigs: string[] = [];
+ *  hex strings (64 bytes each) along with their attester index (0-based),
+ *  ready to be packed into sorted `(key_index, sig)` Vec<ScVal> pairs
+ *  for the lending_controller's `wrap` entry point. */
+export async function collectSignatures(
+  payload: Uint8Array,
+): Promise<{ sig: string; index: number }[]> {
+  const sigs: { sig: string; index: number }[] = [];
+  let idx = 0;
   for (const pk of attesters) {
     try {
       const secretKey = Buffer.from(pk.replace(/^0x/, ""), "hex");
       if (secretKey.length !== 32) throw new Error("ed25519 secret must be 32 bytes");
       const sig = await ed.sign(payload, secretKey);
-      sigs.push("0x" + Buffer.from(sig).toString("hex"));
+      sigs.push({ sig: "0x" + Buffer.from(sig).toString("hex"), index: idx });
       if (sigs.length >= config.ATTESTER_THRESHOLD) break;
     } catch (err) {
       logger.error({ err }, "attester failed to sign");
     }
+    idx += 1;
   }
   return sigs;
 }

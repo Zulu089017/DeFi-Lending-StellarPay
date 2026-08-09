@@ -20,11 +20,10 @@ const CHAIN_IDS: Record<SourceChainId, number> = {
   solana: 0,
 };
 
-// NOTE: The on-chain `lending_controller.wrap` expects a single ed25519
-// signature (`BytesN<64>`) over a payload that binds (chain_id, source_addr,
-// amount, to, salt). The off-chain attester set must therefore use ed25519
-// keys (the same curve Soroban uses natively), not ECDSA. The signer below
-// is wired to produce ed25519 signatures; see `attest/signer.ts`.
+// NOTE: The on-chain `lending_controller.wrap` now accepts a Vec of
+// (key_index, ed25519_signature) pairs and enforces a configurable threshold
+// (2-of-3 by default). The off-chain signer collects >= threshold signatures
+// and sends them all on-chain. See `attest/signer.ts`.
 
 export class StellarMinter {
   private server: Horizon.Server;
@@ -124,49 +123,36 @@ export class StellarMinter {
       return false;
     }
 
-    // ── C6 WARNING: Single-signer model ──────────────────────────────
-    // The on-chain `lending_controller.wrap` accepts a single `BytesN<64>`
-    // ed25519 signature. This means only ONE attester's signature is sent
-    // on-chain — the 2-of-3 (or N-of-M) quorum is NOT enforced on-chain.
-    //
-    // PRODUCTION FIX: The on-chain contract must be upgraded to:
-    //   a) Accept `Vec<BytesN<64>>` (multiple signatures), and
-    //   b) Verify that at least `threshold` distinct attester pubkeys
-    //      have signed the payload.
-    //
-    // Until that upgrade, we enforce the quorum check OFF-CHAIN:
-    // we require at least ATTESTER_THRESHOLD signatures to be collected
-    // before we submit. This is NOT a substitute for on-chain enforcement.
+    // Enforce the attester quorum off-chain as a safety net (the on-chain
+    // contract also enforces threshold independently).
     if (sigs.length < config.ATTESTER_THRESHOLD) {
       logger.error(
         { got: sigs.length, need: config.ATTESTER_THRESHOLD },
-        "C6: insufficient attester signatures (quorum not met)",
+        "insufficient attester signatures (quorum not met)",
       );
       return false;
     }
 
-    // The first signature is sent on-chain. Production should send ALL
-    // signatures once the contract supports multi-sig verification.
-    const firstSig = sigs[0];
-    const sigBytes = Buffer.from(firstSig.replace(/^0x/, ""), "hex");
-    if (sigBytes.length !== 64) {
-      logger.error({ len: sigBytes.length }, "unexpected signature length");
-      return false;
-    }
+    // Build the sorted (key_index, BytesN<64>) attestation Vec for the
+    // controller's `wrap` entry point. Signatures are already collected in
+    // index order (attesters are iterated sequentially).
+    const attestationScVals = sigs.map(({ sig, index }) => {
+      const sigBytes = Buffer.from(sig.replace(/^0x/, ""), "hex");
+      if (sigBytes.length !== 64) {
+        throw new Error(`unexpected signature length: ${sigBytes.length}`);
+      }
+      return xdr.ScVal.scvVec([
+        nativeToScVal(index, { type: "u32" }),
+        xdr.ScVal.scvBytes(sigBytes),
+      ]);
+    });
+    const attestationsScval = xdr.ScVal.scvVec(attestationScVals);
+
     const saltBytes = Buffer.from(req.salt.replace(/^0x/, ""), "hex");
     if (saltBytes.length !== 32) {
       logger.error({ len: saltBytes.length }, "salt must be 32 bytes");
       return false;
     }
-
-    // Build Soroban invocation of `lending_controller.wrap`. We use the XDR
-    // constructor directly for the BytesN fields because `nativeToScVal` with
-    // `type: "bytes"` produces a variable-length Bytes which the Soroban
-    // host will reject for a BytesN<64> / BytesN<32> parameter.
-    // NOTE: @stellar/stellar-sdk v12 does not expose scvBytesN, so we use
-    // scvBytes with correctly-sized buffers. A 32-byte and 64-byte buffer
-    // produce the same on-wire XDR as BytesN<32> and BytesN<64> respectively.
-    const sigScval = xdr.ScVal.scvBytes(sigBytes);
     const saltScval = xdr.ScVal.scvBytes(saltBytes);
     const nonceU64 = nativeToScVal(nonce, { type: "u64" });
 
@@ -197,7 +183,7 @@ export class StellarMinter {
           contract: this.controller,
           function: "wrap",
           args: [
-            sigScval,
+            attestationsScval,
             nativeToScVal(chainId, { type: "u32" }),
             sourceAddrScval,
             nativeToScVal(req.amount, { type: "i128" }),
