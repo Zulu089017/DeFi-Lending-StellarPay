@@ -28,6 +28,14 @@ settlement.
 > Stellar testnet. All 7 Soroban contracts deployed and verified. See
 > [DEPLOYMENTS.md](DEPLOYMENTS.md) for contract addresses.
 
+## 🎥 Demo
+
+> 📹 **Video walkthrough coming soon.** See [DEMO.md](DEMO.md) for the
+> scene-by-scene recording script covering the full cross-chain flow: wrap →
+> supply → borrow → liquidation on Stellar testnet.
+>
+> _After recording: replace this section with a YouTube/Loom embed._
+
 ---
 
 ## 🌍 Why StellarPay?
