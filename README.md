@@ -12,8 +12,8 @@
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF.svg)](.github/workflows/ci.yml)
 [![Code style: rustfmt](https://img.shields.io/badge/code%20style-rustfmt-orange.svg)](contracts/rustfmt.toml)
 [![Turborepo](https://img.shields.io/badge/build-Turborepo-EF4444.svg)](turbo.json)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6.svg)](packages/tsconfig/base.json)
-[![Rust](https://img.shields.io/badge/Rust-1.91-000000.svg)](contracts/rust-toolchain)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6.svg)](packages/sdk/package.json)
+[![Rust](https://img.shields.io/badge/Rust-1.91-000000.svg)](contracts/Cargo.toml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](.github/CONTRIBUTING.md)
 
 **StellarPay** is a middleware that allows developers on other chains (Ethereum,
