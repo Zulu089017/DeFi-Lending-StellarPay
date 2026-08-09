@@ -821,6 +821,7 @@ mod tests {
         admin: Address,
         #[allow(dead_code)]
         bridge_keys: Vec<BytesN<32>>,
+        #[allow(dead_code)]
         bridge_threshold: u32,
         wrapped: Address,
         pool: Address,
