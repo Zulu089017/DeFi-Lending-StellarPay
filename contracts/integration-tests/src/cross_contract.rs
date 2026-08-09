@@ -25,6 +25,7 @@ struct ProtocolEnv {
     signer: ed25519_dalek::SigningKey,
     #[allow(dead_code)]
     bridge_keys: soroban_sdk::Vec<BytesN<32>>,
+    #[allow(dead_code)]
     bridge_threshold: u32,
 }
 
