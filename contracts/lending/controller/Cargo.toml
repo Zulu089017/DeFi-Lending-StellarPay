@@ -13,7 +13,7 @@ soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-ed25519-dalek = { version = "2", features = ["rand_core"] }
+ed25519-dalek = { version = "3", features = ["rand_core"] }
 wrapped_asset = { path = "../../treasury/soroban" }
 lending_pool = { path = "../../lending/soroban" }
 collateral_vault = { path = "../../collateral/soroban" }
