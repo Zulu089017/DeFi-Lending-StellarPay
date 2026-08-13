@@ -1,5 +1,9 @@
 # StellarPay
 
+<p align="center">
+  <img src="public/logo.svg" alt="StellarPay logo" width="160" />
+</p>
+
 > A decentralized cross-chain lending protocol with automated liquidation, built
 > on Stellar's ultra-fast, low-fee network.
 
