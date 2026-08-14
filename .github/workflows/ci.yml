@@ -18,7 +18,7 @@ jobs:
     name: Lint config files
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: ./contracts } }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # soroban-sdk 27 has MSRV 1.91 and its build.rs rejects the
       # `wasm32-unknown-unknown` target on Rust 1.82+ (reference-types /
       # multi-value features), requiring `wasm32v1-none` instead.
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: ./contracts } }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -122,7 +122,7 @@ jobs:
           - service: sdk
             prisma: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
@@ -144,7 +144,7 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
