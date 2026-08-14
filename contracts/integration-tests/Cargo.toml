@@ -29,7 +29,7 @@ rewards = { path = "../rewards/soroban" }
 soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [dev-dependencies]
-ed25519-dalek = { version = "2", features = ["rand_core"] }
+ed25519-dalek = { version = "3", features = ["rand_core"] }
 
 [features]
 # All tests run under `cargo test --workspace`; no feature gating needed.
