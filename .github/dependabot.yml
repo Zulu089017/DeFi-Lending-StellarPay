@@ -61,6 +61,21 @@ updates:
         patterns: ["@openzeppelin/*"]
     commit-message: { prefix: "deps(evm)" }
     open-pull-requests-limit: 5
+    # These majors require a coordinated migration (Hardhat 3 is ESM-only,
+    # TypeScript 7 is the native Go compiler, hardhat-upgrades 4 / toolbox 7
+    # target Hardhat 3). Keep them pinned until that migration is done so
+    # weekly bump PRs don't silently break the EVM contracts CI again.
+    ignore:
+      - dependency-name: "hardhat"
+        versions: [">=3.0.0"]
+      - dependency-name: "@nomicfoundation/hardhat-toolbox"
+        versions: [">=6.0.0"]
+      - dependency-name: "@openzeppelin/hardhat-upgrades"
+        versions: [">=4.0.0"]
+      - dependency-name: "typescript"
+        versions: [">=6.0.0"]
+      - dependency-name: "dotenv"
+        versions: [">=17.0.0"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
