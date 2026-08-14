@@ -1,0 +1,12 @@
+contracts
+infra
+services
+target
+.github
+*.wasm
+*.rs
+Cargo.toml
+Cargo.lock
+rustfmt.toml
+clippy.toml
+node_modules

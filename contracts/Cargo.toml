@@ -16,7 +16,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/stellar-payment-gateway/stellar-payment-gateway-sdk-main"
+repository = "https://github.com/Zulu089017/DeFi-Lending-Platform"
 
 [workspace.dependencies]
 soroban-sdk = "=27.0.4"

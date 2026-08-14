@@ -40,7 +40,7 @@ const ROOT = path.resolve(CONTRACTS_DIR, "..");
 // @stellar/stellar-sdk is a dependency of the `sdk` package (pnpm workspace),
 // not the root. Anchor module resolution at sdk/package.json so this script
 // runs from anywhere in the repo.
-const require = createRequire(path.join(ROOT, "sdk", "package.json"));
+const require = createRequire(path.join(ROOT, "packages", "sdk", "package.json"));
 const {
   Address,
   Keypair,
@@ -53,7 +53,7 @@ const {
 } = require("@stellar/stellar-sdk");
 const ENV_FILE = path.join(CONTRACTS_DIR, ".env");
 const WASM_DIR = path.join(CONTRACTS_DIR, "target", "wasm32v1-none", "release");
-const MANIFEST_PATH = path.join(ROOT, "sdk", "src", "manifest.json");
+const MANIFEST_PATH = path.join(ROOT, "packages", "sdk", "src", "manifest.json");
 const STELLAR_TOML_PATH = path.join(ROOT, "stellar.toml");
 
 const RPC_URL = process.env.STELLAR_RPC ?? "https://soroban-testnet.stellar.org";
@@ -468,9 +468,16 @@ async function main() {
   ]);
 
   console.log("▶ initializing lending_controller...");
+  // All 3 attester ed25519 pubkeys, threshold = 2.
+  const bridgeKeys = xdr.ScVal.scvVec([
+    bytes(attA.rawPublicKey()),
+    bytes(attB.rawPublicKey()),
+    bytes(attC.rawPublicKey()),
+  ]);
   await invoke(server, admin, ids.LENDING_CONTROLLER, "initialize", [
     addr(admin.publicKey()),
-    bytes(attA.rawPublicKey()), // bridge: BytesN<32> = ed25519 pubkey
+    bridgeKeys,
+    u32(2), // bridge_threshold = 2-of-3
     addr(ids.WRAPPED_ASSET),
     addr(ids.LENDING_POOL),
     addr(ids.COLLATERAL_VAULT),
@@ -539,7 +546,7 @@ ORG_URL = "https://spg.xyz"
 ORG_DESCRIPTION = "Cross-chain lending protocol settled on Stellar with automated liquidation."
 ORG_OFFICIAL_EMAIL = "hello@spg.xyz"
 ORG_TWITTER = "spg_xyz"
-ORG_GITHUB = "https://github.com/stellar-payment-gateway/stellar-payment-gateway-sdk-main"
+ORG_GITHUB = "https://github.com/Zulu089017/DeFi-Lending-Platform"
 
 # StellarPay does not run a Stellar validator; bridge attester keys are listed
 # under ACCOUNTS above. (SEP-1 [[PRINCIPALS]] is reserved for personal info and
@@ -571,7 +578,7 @@ desc = "Wrapped USDC bridged via the StellarPay bridge."
   // SEP-1 hosting copy: the frontend serves /.well-known/stellar.toml from
   // its `public` dir so wallets/explorers can discover StellarPay assets on
   // https://spg.xyz. Keep it byte-identical to the canonical file.
-  const frontendToml = path.join(ROOT, "frontend", "public", ".well-known", "stellar.toml");
+  const frontendToml = path.join(ROOT, "apps", "web", "public", ".well-known", "stellar.toml");
   mkdirSync(path.dirname(frontendToml), { recursive: true });
   writeFileSync(frontendToml, toml);
   console.log(`✔ wrote ${frontendToml}`);

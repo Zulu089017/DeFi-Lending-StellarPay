@@ -24,7 +24,9 @@ struct ProtocolEnv {
     liq_id: Address,
     signer: ed25519_dalek::SigningKey,
     #[allow(dead_code)]
-    bridge_pub: BytesN<32>,
+    bridge_keys: soroban_sdk::Vec<BytesN<32>>,
+    #[allow(dead_code)]
+    bridge_threshold: u32,
 }
 
 fn deploy_protocol() -> ProtocolEnv {
@@ -33,7 +35,11 @@ fn deploy_protocol() -> ProtocolEnv {
 
     let admin = Address::generate(&env);
     let signer = ed25519_dalek::SigningKey::from_bytes(&[0xABu8; 32]);
-    let bridge_pub = BytesN::from_array(&env, &signer.verifying_key().to_bytes());
+    let bridge_keys = soroban_sdk::vec![
+        &env,
+        BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
+    ];
+    let bridge_threshold: u32 = 1;
 
     // ── Deploy sub-contracts ──
     let wrapped_id = env.register(wrapped_asset::WrappedAsset {}, ());
@@ -110,7 +116,8 @@ fn deploy_protocol() -> ProtocolEnv {
     let c = lending_controller::LendingControllerClient::new(&env, &ctrl_id);
     c.initialize(
         &admin,
-        &bridge_pub,
+        &bridge_keys,
+        &bridge_threshold,
         &wrapped_id,
         &pool_id,
         &vault_id,
@@ -131,7 +138,6 @@ fn deploy_protocol() -> ProtocolEnv {
         },
         &admin, // treasury = admin for now
     );
-
     ProtocolEnv {
         env,
         admin,
@@ -142,7 +148,8 @@ fn deploy_protocol() -> ProtocolEnv {
         ctrl_id,
         liq_id,
         signer,
-        bridge_pub,
+        bridge_keys,
+        bridge_threshold,
     }
 }
 
@@ -189,7 +196,8 @@ fn do_wrap(pe: &ProtocolEnv, to: &Address, amount: i128, salt_seed: u8) {
         &pe.env, &pe.signer, chain_id, &src, amount, to, &salt, nonce,
     );
     let c = lending_controller::LendingControllerClient::new(&pe.env, &pe.ctrl_id);
-    c.wrap(&sig, &chain_id, &src, &amount, to, &salt, &nonce);
+    let atts = soroban_sdk::vec![&pe.env, (0u32, sig)];
+    c.wrap(&atts, &chain_id, &src, &amount, to, &salt, &nonce);
 }
 
 #[cfg(test)]

@@ -47,7 +47,7 @@ export function SiteHeader() {
         <div className="hidden items-center gap-3 md:flex">
           <WalletConnect />
           <Button asChild size="sm" variant="outline">
-            <a href="https://github.com/stellar-payment-gateway/stellar-payment-gateway-sdk-main" target="_blank" rel="noreferrer">GitHub</a>
+            <a href="https://github.com/Zulu089017/DeFi-Lending-Platform" target="_blank" rel="noreferrer">GitHub</a>
           </Button>
         </div>
 

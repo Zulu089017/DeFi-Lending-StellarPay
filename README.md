@@ -1,17 +1,23 @@
 # StellarPay
 
+<p align="center">
+  <img src="public/logo.svg" alt="StellarPay logo" width="160" />
+</p>
+
 > A decentralized cross-chain lending protocol with automated liquidation, built
 > on Stellar's ultra-fast, low-fee network.
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-scaffold-yellow.svg)](docs/security.md)
+[![Status](https://img.shields.io/badge/status-pre--audit_|_testnet_only-yellow.svg)](docs/security.md)
+[![Audit](https://img.shields.io/badge/Audit-Planned_Q1_2027-lightgrey.svg)](docs/security.md#audit)
+[![Demo](https://img.shields.io/badge/Demo-Live_↗-success.svg)](https://web-h21ixnvop-zulu0890s-projects.vercel.app)
 [![Soroban](https://img.shields.io/badge/Soroban-27-blueviolet.svg)](contracts/Cargo.toml)
 [![Solidity](https://img.shields.io/badge/Solidity-%5E0.8.24-363636.svg)](contracts/hardhat.config.ts)
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF.svg)](.github/workflows/ci.yml)
 [![Code style: rustfmt](https://img.shields.io/badge/code%20style-rustfmt-orange.svg)](contracts/rustfmt.toml)
 [![Turborepo](https://img.shields.io/badge/build-Turborepo-EF4444.svg)](turbo.json)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6.svg)](packages/tsconfig/base.json)
-[![Rust](https://img.shields.io/badge/Rust-1.91-000000.svg)](contracts/rust-toolchain)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6.svg)](packages/sdk/package.json)
+[![Rust](https://img.shields.io/badge/Rust-1.91-000000.svg)](contracts/Cargo.toml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](.github/CONTRIBUTING.md)
 
 **StellarPay** is a middleware that allows developers on other chains (Ethereum,
@@ -19,6 +25,20 @@ Solana, Polygon) to instantly spin up wrapped versions of their tokens on
 Stellar. These wrapped assets can then be used in a fully on-chain lending
 protocol featuring automated liquidation, powered by Stellar's near-instant
 settlement.
+
+> 🔗 **Live Demo:**
+> [web-h21ixnvop-zulu0890s-projects.vercel.app](https://web-h21ixnvop-zulu0890s-projects.vercel.app)
+> — Explore the lending dashboard, bridge tokens, and monitor liquidations on
+> Stellar testnet. All 7 Soroban contracts deployed and verified. See
+> [DEPLOYMENTS.md](DEPLOYMENTS.md) for contract addresses.
+
+## 🎥 Demo
+
+> 📹 **Video walkthrough coming soon.** See [DEMO.md](DEMO.md) for the
+> scene-by-scene recording script covering the full cross-chain flow: wrap →
+> supply → borrow → liquidation on Stellar testnet.
+>
+> _After recording: replace this section with a YouTube/Loom embed._
 
 ---
 
@@ -105,8 +125,8 @@ StellarPay/
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/stellar-payment-gateway/stellar-payment-gateway-sdk-main
-cd stellar-payment-gateway-sdk-main
+git clone https://github.com/Zulu089017/DeFi-Lending-Platform
+cd DeFi-Lending-Platform
 pnpm install
 ```
 
@@ -237,10 +257,11 @@ pnpm dev          # Start all dev servers
 - [Protocol Invariants](docs/invariants.md) — what an audit will check
 - [Security Model & Threat Model](docs/security.md) — known TODOs and disclosure
   policy
+- [Deployments](DEPLOYMENTS.md) — testnet contract addresses & live demo URL
+- [Deployment Guide](docs/deployment.md)
 - [Polyrepo Guide](docs/polyrepo.md)
 - [API Reference](docs/api.md)
 - [SDK Reference](docs/sdk.md)
-- [Deployment Guide](docs/deployment.md)
 - [Changelog](CHANGELOG.md) · [Security Policy](SECURITY.md)
 
 ---
@@ -257,10 +278,11 @@ Apache 2.0 — see [LICENSE](LICENSE).
 
 ## ⚠️ Status
 
-This repository is a **scaffold / reference implementation**. The smart
-contracts have not been audited. Health factor checks, collateral validation,
-and liquidation invariants are implemented and tested (26 invariant tests pass),
-but several cross-contract integration TODOs remain — see
-[`docs/security.md`](docs/security.md). **Do not deposit real assets.** A formal
-audit, bug-bounty program, and coordinated disclosure policy are tracked in
-[`SECURITY.md`](SECURITY.md).
+This repository is a **testnet-stage protocol**. The smart contracts have not
+been audited. All 7 Soroban contracts are deployed to Stellar testnet (see
+[DEPLOYMENTS.md](DEPLOYMENTS.md)) and the Next.js dashboard is live at the demo
+link above. Health factor checks, collateral validation, and liquidation
+invariants are implemented and tested (103 tests pass, 26 invariant tests). **Do
+not deposit real assets.** A formal audit, bug-bounty program, and coordinated
+disclosure policy are tracked in [`SECURITY.md`](SECURITY.md) and
+[`docs/security.md`](docs/security.md).

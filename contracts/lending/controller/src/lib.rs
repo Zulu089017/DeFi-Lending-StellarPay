@@ -23,10 +23,19 @@ const MAX_LTV_BPS: u32 = 7_500;
 
 #[contracttype]
 #[derive(Clone)]
+pub struct BridgeSet {
+    /// Ed25519 public keys of the bridge attesters.
+    pub keys: Vec<BytesN<32>>,
+    /// Minimum number of distinct valid attestations required for wrap/unwrap.
+    pub threshold: u32,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     /// Multi-admin set (replaces single Admin for multisig support).
     AdminSet,
-    /// bridge attester address (Ed25519 pubkey hash)
+    /// Bridge attester set (N-of-M threshold). Replaces the single Bridge key.
     Bridge,
     /// Pending bridge update (proposed, awaiting timelock expiry)
     PendingBridge,
@@ -102,7 +111,8 @@ impl LendingController {
     pub fn initialize(
         env: Env,
         admin: Address,
-        bridge: BytesN<32>,
+        bridge_keys: Vec<BytesN<32>>,
+        bridge_threshold: u32,
         wrapped_asset: Address,
         lending_pool: Address,
         collateral_vault: Address,
@@ -120,7 +130,13 @@ impl LendingController {
                 threshold: 1,
             },
         );
-        env.storage().instance().set(&DataKey::Bridge, &bridge);
+        env.storage().instance().set(
+            &DataKey::Bridge,
+            &BridgeSet {
+                keys: bridge_keys,
+                threshold: bridge_threshold,
+            },
+        );
         env.storage()
             .instance()
             .set(&DataKey::WrappedAsset, &wrapped_asset);
@@ -138,12 +154,13 @@ impl LendingController {
     /// Called by the bridge middleware (off-chain relayer) after observing a
     /// `Locked` event on the source chain. Mints `wTKN` to `to` on Stellar.
     ///
-    /// `attestation` is an ed25519 signature over a sha256(abi_encode(...))
-    /// payload that binds `(chain_id, source_addr, amount, to, salt, nonce)`
-    /// to the registered bridge pubkey.
+    /// `attestations` is a sorted Vec of `(key_index, ed25519_signature)`
+    /// pairs. Each signature is verified against the bridge pubkey at the
+    /// given index, and the total number of distinct valid attestations must
+    /// meet or exceed the configured `bridge_threshold`.
     pub fn wrap(
         env: Env,
-        attestation: BytesN<64>, // ed25519 signature
+        attestations: Vec<(u32, BytesN<64>)>, // sorted (key_index, ed25519 sig)
         chain_id: u32,
         source_addr: BytesN<32>,
         amount: i128,
@@ -154,7 +171,7 @@ impl LendingController {
         Self::require_not_paused(&env);
         Self::require_bridge(
             &env,
-            &attestation,
+            &attestations,
             chain_id,
             source_addr.clone(),
             amount,
@@ -401,13 +418,17 @@ impl LendingController {
         env.storage().instance().set(&DataKey::Paused, &paused);
     }
 
-    /// Propose a new bridge pubkey. Any admin can propose; the change takes
-    /// effect only after `execute_bridge` is called post-timelock.
-    pub fn propose_bridge(env: Env, bridge: BytesN<32>) {
+    /// Propose a new bridge attester set. Any admin can propose; the change
+    /// takes effect only after `execute_bridge` is called post-timelock.
+    pub fn propose_bridge(env: Env, bridge_keys: Vec<BytesN<32>>, bridge_threshold: u32) {
         Self::require_admin(&env);
-        env.storage()
-            .instance()
-            .set(&DataKey::PendingBridge, &bridge);
+        env.storage().instance().set(
+            &DataKey::PendingBridge,
+            &BridgeSet {
+                keys: bridge_keys,
+                threshold: bridge_threshold,
+            },
+        );
         let now: u64 = env.ledger().sequence().into();
         env.storage()
             .instance()
@@ -427,7 +448,7 @@ impl LendingController {
         if now.saturating_sub(proposed_at) < TIMELOCK_LEDGERS {
             panic!("timelock not expired");
         }
-        let bridge: BytesN<32> = env
+        let bridge: BridgeSet = env
             .storage()
             .instance()
             .get(&DataKey::PendingBridge)
@@ -439,9 +460,15 @@ impl LendingController {
 
     /// Direct bridge set (backward compat for tests). Production should use
     /// propose_bridge + execute_bridge with timelock.
-    pub fn set_bridge(env: Env, bridge: BytesN<32>) {
+    pub fn set_bridge(env: Env, bridge_keys: Vec<BytesN<32>>, bridge_threshold: u32) {
         Self::require_admin(&env);
-        env.storage().instance().set(&DataKey::Bridge, &bridge);
+        env.storage().instance().set(
+            &DataKey::Bridge,
+            &BridgeSet {
+                keys: bridge_keys,
+                threshold: bridge_threshold,
+            },
+        );
     }
 
     /// Add a new admin to the admin set. Requires threshold approvals from
@@ -586,7 +613,7 @@ impl LendingController {
 
     fn require_bridge(
         env: &Env,
-        attestation: &BytesN<64>,
+        attestations: &Vec<(u32, BytesN<64>)>,
         chain_id: u32,
         source_addr: BytesN<32>,
         amount: i128,
@@ -594,15 +621,21 @@ impl LendingController {
         salt: &BytesN<32>,
         nonce: u64,
     ) {
-        // Ed25519 verification of an attestation that binds the
-        // (chain_id, source_addr, amount, to, salt, nonce) tuple to a bridge
-        // pubkey. The off-chain signer (bridge/src/attest/signer.ts) signs
-        // sha256(build_canonical_payload(...)) with ed25519.
-        let bridge_pub: BytesN<32> = env
+        // Multi-attester threshold verification. Each attestation is an
+        // ed25519 signature over sha256(canonical_payload). The caller must
+        // provide (key_index, signature) pairs sorted by key_index to prevent
+        // duplicate-index attacks. Each signature is verified against the
+        // bridge pubkey at the given index, and the total number of distinct
+        // valid attestations must meet or exceed the configured threshold.
+        let bridge_set: BridgeSet = env
             .storage()
             .instance()
             .get(&DataKey::Bridge)
             .expect("bridge not set");
+
+        if attestations.len() < bridge_set.threshold {
+            panic!("not enough attestations");
+        }
 
         // Build the canonical payload (must match `payloadHash` in
         // bridge/src/attest/signer.ts byte-for-byte).
@@ -617,10 +650,29 @@ impl LendingController {
         );
         let hash = env.crypto().sha256(&payload);
         let hash_bytes = Bytes::from_slice(env, &hash.to_array());
-        env.crypto()
-            .ed25519_verify(&bridge_pub, &hash_bytes, attestation);
-        // If the signature is invalid, ed25519_verify panics with a host
-        // error and the transaction reverts.
+
+        // Verify each attestation against its claimed bridge pubkey.
+        // ed25519_verify panics on invalid signature, which reverts the tx.
+        // Sorted key indices enforced by must-increase check prevents
+        // duplicate-key attacks.
+        let mut last_index: i64 = -1;
+        let mut valid_count: u32 = 0;
+        for (index, sig) in attestations.iter() {
+            let idx_i64 = index as i64;
+            if idx_i64 <= last_index {
+                panic!("duplicate or unsorted attestations");
+            }
+            last_index = idx_i64;
+            let bridge_pub = bridge_set.keys.get(index).expect("invalid key index");
+            env.crypto().ed25519_verify(&bridge_pub, &hash_bytes, &sig);
+            valid_count += 1;
+        }
+        // valid_count == attestations.len() here because ed25519_verify panics
+        // on any invalid signature. The check below is an invariant assertion
+        // that the sorted-index-and-verify loop processed all attestations.
+        if valid_count < bridge_set.threshold {
+            panic!("not enough valid attestations");
+        }
     }
 
     /// Build the canonical payload that both sides sign. Layout (dynamic
@@ -768,7 +820,9 @@ mod tests {
         #[allow(dead_code)]
         admin: Address,
         #[allow(dead_code)]
-        bridge: BytesN<32>,
+        bridge_keys: Vec<BytesN<32>>,
+        #[allow(dead_code)]
+        bridge_threshold: u32,
         wrapped: Address,
         pool: Address,
         vault: Address,
@@ -827,10 +881,12 @@ mod tests {
         // LendingControllerClient to be stored in the struct with 'static
         // lifetime alongside the original Env.
         let ctrl = LendingControllerClient::new(&env.clone(), &ctrl_id);
-        let bridge = BytesN::from_array(&env, &[1u8; 32]);
+        let bridge_keys = soroban_sdk::vec![&env, BytesN::from_array(&env, &[1u8; 32])];
+        let bridge_threshold: u32 = 1;
         ctrl.initialize(
             &admin,
-            &bridge,
+            &bridge_keys,
+            &bridge_threshold,
             &wrapped_id,
             &pool_id,
             &vault_id,
@@ -847,7 +903,8 @@ mod tests {
         TestEnv {
             env,
             admin,
-            bridge,
+            bridge_keys,
+            bridge_threshold,
             wrapped: wrapped_id,
             pool: pool_id,
             vault: vault_id,
@@ -884,6 +941,12 @@ mod tests {
         BytesN::from_array(env, &sig.to_bytes())
     }
 
+    /// Wrap a single attestation into a sorted Vec<(u32, BytesN<64>)> for the
+    /// `wrap` entry point, with the given key_index.
+    fn attestations(env: &Env, key_index: u32, sig: &BytesN<64>) -> Vec<(u32, BytesN<64>)> {
+        soroban_sdk::vec![env, (key_index, sig.clone())]
+    }
+
     // ──────────────────── INITIALIZATION ────────────────────
 
     #[test]
@@ -903,11 +966,11 @@ mod tests {
         ctrl.set_paused(&true);
         // Calling wrap while paused must revert (checked before the
         // attestation, so an arbitrary signature still hits the pause gate).
-        let sig = BytesN::from_array(&env, &[0u8; 64]);
         let src = BytesN::from_array(&env, &[0u8; 32]);
         let salt = BytesN::from_array(&env, &[2u8; 32]);
+        let fake_attestations = attestations(&env, 0, &BytesN::from_array(&env, &[0u8; 64]));
         ctrl.wrap(
-            &sig,
+            &fake_attestations,
             &1u32,
             &src,
             &1_000i128,
@@ -924,11 +987,14 @@ mod tests {
             env, wrapped, ctrl, ..
         } = setup();
         let signer = ed25519_dalek::SigningKey::from_bytes(&[2u8; 32]);
-        // Update bridge pubkey to match the signer.
-        ctrl.set_bridge(&BytesN::from_array(
-            &env,
-            &signer.verifying_key().to_bytes(),
-        ));
+        // Update bridge pubkey to match the signer (single key, threshold 1).
+        ctrl.set_bridge(
+            &soroban_sdk::vec![
+                &env,
+                BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
+            ],
+            &1u32,
+        );
 
         let chain_id = 1u32;
         let src = BytesN::from_array(&env, &[4u8; 32]);
@@ -940,9 +1006,10 @@ mod tests {
         let salt = BytesN::from_array(&env, &[5u8; 32]);
         let nonce = 7u64;
         let sig = valid_attestation(&env, &signer, chain_id, &src, amount, &to, &salt, nonce);
+        let atts = attestations(&env, 0, &sig);
 
         // Execute the wrap — should call wrapped_asset.mint internally.
-        ctrl.wrap(&sig, &chain_id, &src, &amount, &to, &salt, &nonce);
+        ctrl.wrap(&atts, &chain_id, &src, &amount, &to, &salt, &nonce);
 
         // Verify that tokens were actually minted by the cross-contract call.
         let balance = wrapped_asset::WrappedAssetClient::new(&env, &wrapped).balance(&to);
@@ -958,10 +1025,13 @@ mod tests {
     fn test_C1_wrong_attester_rejected() {
         let TestEnv { env, ctrl, .. } = setup();
         let signer = ed25519_dalek::SigningKey::from_bytes(&[2u8; 32]);
-        ctrl.set_bridge(&BytesN::from_array(
-            &env,
-            &signer.verifying_key().to_bytes(),
-        ));
+        ctrl.set_bridge(
+            &soroban_sdk::vec![
+                &env,
+                BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
+            ],
+            &1u32,
+        );
 
         let chain_id = 1u32;
         let src = BytesN::from_array(&env, &[4u8; 32]);
@@ -975,7 +1045,8 @@ mod tests {
         // Forge the attestation with a *different* keypair.
         let attacker = ed25519_dalek::SigningKey::from_bytes(&[9u8; 32]);
         let sig = valid_attestation(&env, &attacker, chain_id, &src, amount, &to, &salt, nonce);
-        ctrl.wrap(&sig, &chain_id, &src, &amount, &to, &salt, &nonce);
+        let atts = attestations(&env, 0, &sig);
+        ctrl.wrap(&atts, &chain_id, &src, &amount, &to, &salt, &nonce);
     }
 
     /// **C-2 (replay protection):** A `wrap` with a re-used `salt` reverts.
@@ -986,10 +1057,13 @@ mod tests {
             env, wrapped, ctrl, ..
         } = setup();
         let signer = ed25519_dalek::SigningKey::from_bytes(&[6u8; 32]);
-        ctrl.set_bridge(&BytesN::from_array(
-            &env,
-            &signer.verifying_key().to_bytes(),
-        ));
+        ctrl.set_bridge(
+            &soroban_sdk::vec![
+                &env,
+                BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
+            ],
+            &1u32,
+        );
 
         let chain_id = 1u32;
         let src = BytesN::from_array(&env, &[0u8; 32]);
@@ -1001,14 +1075,16 @@ mod tests {
         let salt = BytesN::from_array(&env, &[3u8; 32]);
         let nonce = 0u64;
         let sig = valid_attestation(&env, &signer, chain_id, &src, amount, &to, &salt, nonce);
+        let atts = attestations(&env, 0, &sig);
 
         // First wrap succeeds and mints tokens.
-        ctrl.wrap(&sig, &chain_id, &src, &amount, &to, &salt, &nonce);
+        ctrl.wrap(&atts, &chain_id, &src, &amount, &to, &salt, &nonce);
         let bal = wrapped_asset::WrappedAssetClient::new(&env, &wrapped).balance(&to);
         assert_eq!(bal, amount);
 
         // Second wrap with the same salt must revert.
-        ctrl.wrap(&sig, &chain_id, &src, &amount, &to, &salt, &nonce);
+        let atts2 = attestations(&env, 0, &sig);
+        ctrl.wrap(&atts2, &chain_id, &src, &amount, &to, &salt, &nonce);
     }
 
     // ──────────────────────── UNWRAP ────────────────────────
@@ -1020,10 +1096,13 @@ mod tests {
             env, wrapped, ctrl, ..
         } = setup();
         let signer = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
-        ctrl.set_bridge(&BytesN::from_array(
-            &env,
-            &signer.verifying_key().to_bytes(),
-        ));
+        ctrl.set_bridge(
+            &soroban_sdk::vec![
+                &env,
+                BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
+            ],
+            &1u32,
+        );
 
         let _user = Address::generate(&env);
         let amount = 500i128;
@@ -1035,9 +1114,10 @@ mod tests {
             "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
         );
         let sig = valid_attestation(&env, &signer, chain_id, &src, amount, &to, &salt, 0u64);
+        let atts = attestations(&env, 0, &sig);
 
         // First wrap them so the user has a balance.
-        ctrl.wrap(&sig, &chain_id, &src, &amount, &to, &salt, &0u64);
+        ctrl.wrap(&atts, &chain_id, &src, &amount, &to, &salt, &0u64);
 
         // Now unwrap — cross-calls wrapped_asset.burn(user, amount).
         let nonce = ctrl.unwrap(&to, &amount, &chain_id, &src);
@@ -1526,5 +1606,188 @@ mod tests {
             digest(base_chain, &base_src, base_amount, &base_to, &base_salt, 43),
             h0
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MULTI-ATTESTER SIGNING (2-of-3 threshold)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 2-of-3 threshold: wrap succeeds with 2 distinct valid attestations.
+    #[test]
+    fn test_multi_attester_2_of_3_succeeds() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+
+        // Deploy sub-contracts.
+        let wrapped_id = env.register(wrapped_asset::WrappedAsset {}, ());
+        let wrapped_client = wrapped_asset::WrappedAssetClient::new(&env, &wrapped_id);
+        wrapped_client.initialize(
+            &admin,
+            &env.register(LendingController {}, ()),
+            &String::from_str(&env, "Wrapped Test"),
+            &String::from_str(&env, "wTST"),
+            &7u32,
+            &String::from_str(&env, "ethereum"),
+            &String::from_str(&env, "0x0"),
+        );
+        let pool_id = env.register(lending_pool::LendingPool {}, ());
+        lending_pool::LendingPoolClient::new(&env, &pool_id).initialize(&admin);
+        let vault_id = env.register(collateral_vault::CollateralVault {}, ());
+        collateral_vault::CollateralVaultClient::new(&env, &vault_id).initialize(&admin);
+        let oracle_id = env.register(oracle::Oracle {}, ());
+
+        // Deploy controller with 3 attester keys, threshold = 2.
+        let ctrl_id = env.register(LendingController {}, ());
+        let ctrl = LendingControllerClient::new(&env.clone(), &ctrl_id);
+        let signer_a = ed25519_dalek::SigningKey::from_bytes(&[2u8; 32]);
+        let signer_b = ed25519_dalek::SigningKey::from_bytes(&[3u8; 32]);
+        let signer_c = ed25519_dalek::SigningKey::from_bytes(&[4u8; 32]);
+        let bridge_keys = soroban_sdk::vec![
+            &env,
+            BytesN::from_array(&env, &signer_a.verifying_key().to_bytes()),
+            BytesN::from_array(&env, &signer_b.verifying_key().to_bytes()),
+            BytesN::from_array(&env, &signer_c.verifying_key().to_bytes()),
+        ];
+        ctrl.initialize(
+            &admin,
+            &bridge_keys,
+            &2u32, // threshold = 2-of-3
+            &wrapped_id,
+            &pool_id,
+            &vault_id,
+            &oracle_id,
+        );
+        wrapped_client.set_minter(&ctrl_id);
+
+        let chain_id = 1u32;
+        let src = BytesN::from_array(&env, &[9u8; 32]);
+        let amount = 1_000i128;
+        let to = Address::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        );
+        let salt = BytesN::from_array(&env, &[7u8; 32]);
+        let nonce = 0u64;
+
+        // Sign with signers A (index 0) and B (index 1) — 2 distinct signatures.
+        let sig_a = valid_attestation(&env, &signer_a, chain_id, &src, amount, &to, &salt, nonce);
+        let sig_b = valid_attestation(&env, &signer_b, chain_id, &src, amount, &to, &salt, nonce);
+        let atts = soroban_sdk::vec![&env, (0u32, sig_a), (1u32, sig_b)];
+
+        ctrl.wrap(&atts, &chain_id, &src, &amount, &to, &salt, &nonce);
+
+        let balance = wrapped_asset::WrappedAssetClient::new(&env, &wrapped_id).balance(&to);
+        assert_eq!(balance, amount, "2-of-3 should succeed");
+    }
+
+    /// Below threshold: only 1 of 3 signatures → revert.
+    #[test]
+    #[should_panic(expected = "not enough attestations")]
+    fn test_multi_attester_below_threshold_reverts() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+
+        let wrapped_id = env.register(wrapped_asset::WrappedAsset {}, ());
+        wrapped_asset::WrappedAssetClient::new(&env, &wrapped_id).initialize(
+            &admin,
+            &env.register(LendingController {}, ()),
+            &String::from_str(&env, "Wrapped Test"),
+            &String::from_str(&env, "wTST"),
+            &7u32,
+            &String::from_str(&env, "ethereum"),
+            &String::from_str(&env, "0x0"),
+        );
+        let pool_id = env.register(lending_pool::LendingPool {}, ());
+        lending_pool::LendingPoolClient::new(&env, &pool_id).initialize(&admin);
+        let vault_id = env.register(collateral_vault::CollateralVault {}, ());
+        collateral_vault::CollateralVaultClient::new(&env, &vault_id).initialize(&admin);
+        let oracle_id = env.register(oracle::Oracle {}, ());
+
+        let ctrl_id = env.register(LendingController {}, ());
+        let ctrl = LendingControllerClient::new(&env.clone(), &ctrl_id);
+        let signer_a = ed25519_dalek::SigningKey::from_bytes(&[5u8; 32]);
+        let signer_b = ed25519_dalek::SigningKey::from_bytes(&[6u8; 32]);
+        let signer_c = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        let bridge_keys = soroban_sdk::vec![
+            &env,
+            BytesN::from_array(&env, &signer_a.verifying_key().to_bytes()),
+            BytesN::from_array(&env, &signer_b.verifying_key().to_bytes()),
+            BytesN::from_array(&env, &signer_c.verifying_key().to_bytes()),
+        ];
+        ctrl.initialize(
+            &admin,
+            &bridge_keys,
+            &2u32,
+            &wrapped_id,
+            &pool_id,
+            &vault_id,
+            &oracle_id,
+        );
+
+        let src = BytesN::from_array(&env, &[9u8; 32]);
+        let to = Address::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        );
+        let salt = BytesN::from_array(&env, &[8u8; 32]);
+        let sig_a = valid_attestation(&env, &signer_a, 1u32, &src, 1_000i128, &to, &salt, 0u64);
+        // Only 1 signature when threshold is 2.
+        let atts = attestations(&env, 0, &sig_a);
+        ctrl.wrap(&atts, &1u32, &src, &1_000i128, &to, &salt, &0u64);
+    }
+
+    /// Duplicate key index → sorted check fails.
+    #[test]
+    #[should_panic(expected = "duplicate or unsorted attestations")]
+    fn test_multi_attester_duplicate_index_reverts() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+
+        let wrapped_id = env.register(wrapped_asset::WrappedAsset {}, ());
+        wrapped_asset::WrappedAssetClient::new(&env, &wrapped_id).initialize(
+            &admin,
+            &env.register(LendingController {}, ()),
+            &String::from_str(&env, "Wrapped Test"),
+            &String::from_str(&env, "wTST"),
+            &7u32,
+            &String::from_str(&env, "ethereum"),
+            &String::from_str(&env, "0x0"),
+        );
+        let pool_id = env.register(lending_pool::LendingPool {}, ());
+        lending_pool::LendingPoolClient::new(&env, &pool_id).initialize(&admin);
+        let vault_id = env.register(collateral_vault::CollateralVault {}, ());
+        collateral_vault::CollateralVaultClient::new(&env, &vault_id).initialize(&admin);
+        let oracle_id = env.register(oracle::Oracle {}, ());
+
+        let ctrl_id = env.register(LendingController {}, ());
+        let ctrl = LendingControllerClient::new(&env.clone(), &ctrl_id);
+        let signer_a = ed25519_dalek::SigningKey::from_bytes(&[8u8; 32]);
+        let bridge_keys = soroban_sdk::vec![
+            &env,
+            BytesN::from_array(&env, &signer_a.verifying_key().to_bytes()),
+        ];
+        ctrl.initialize(
+            &admin,
+            &bridge_keys,
+            &1u32,
+            &wrapped_id,
+            &pool_id,
+            &vault_id,
+            &oracle_id,
+        );
+
+        let src = BytesN::from_array(&env, &[9u8; 32]);
+        let to = Address::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        );
+        let salt = BytesN::from_array(&env, &[9u8; 32]);
+        let sig = valid_attestation(&env, &signer_a, 1u32, &src, 1_000i128, &to, &salt, 0u64);
+        // Duplicate index 0,0.
+        let atts = soroban_sdk::vec![&env, (0u32, sig.clone()), (0u32, sig)];
+        ctrl.wrap(&atts, &1u32, &src, &1_000i128, &to, &salt, &0u64);
     }
 }
