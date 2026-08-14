@@ -41,7 +41,7 @@ jobs:
       # multi-value features), requiring `wasm32v1-none` instead.
       # See `contracts/BUILD_ENV_NOTES.md`. Pinned to the MSRV for
       # deterministic builds (matches clippy.toml msrv).
-      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: wasm32v1-none
           # Block style is required: the action's `components` input takes a
