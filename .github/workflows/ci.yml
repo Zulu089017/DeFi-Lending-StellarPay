@@ -82,7 +82,7 @@ jobs:
       - run: npx hardhat compile
       - run: npx hardhat test
       - name: Slither static analysis
-        uses: crytic/slither-action@v0.4.0
+        uses: crytic/slither-action@v0.4.2
         with:
           target: contracts
           solc-version: 0.8.24
