@@ -5,7 +5,7 @@
 
 ## Setup before recording
 
-1. Open the live dashboard: https://web-h21ixnvop-zulu0890s-projects.vercel.app
+1. Open the live dashboard: https://app.spg.xyz
 2. Open Stellar Expert testnet: https://stellar.expert/explorer/testnet
 3. Have the contract addresses open from [DEPLOYMENTS.md](../DEPLOYMENTS.md)
 4. Mute notifications and close unrelated tabs

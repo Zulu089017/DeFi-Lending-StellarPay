@@ -17,6 +17,10 @@
 | Replay across chains           | Use an Ethereum `wrap` attestation on Polygon | `chain_id` is part of the signed payload                                          |
 | ECDSA malleability             | Submit a second valid sig for the same digest | `s` value bound to lower half-order                                               |
 
+> 📉 **Economic risk design** (oracle deviation bounds, bad-debt handling,
+> circuit breakers, bridge worst-case exposure) is documented in
+> [`docs/risk.md`](risk.md).
+
 ## Open TODOs (must close before mainnet)
 
 The current scaffold contains a number of **known placeholders**. They are
@@ -96,15 +100,34 @@ deployed. The current plan:
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Firm**             | Trail of Bits (primary); Halborn as backup                                                                                                                |
 | **Scope**            | All 6 Soroban contracts (~2,500 lines Rust), Bridge.sol (~400 lines Solidity), bridge middleware (~800 lines TypeScript), relayer (~200 lines TypeScript) |
-| **Estimated cost**   | $120,000–$180,000 (based on ToB public pricing for comparable protocols)                                                                                  |
+| **Estimated cost**   | **Quote pending** — no written quote/LOI on file yet (see the dated outreach note below); the prior $120k–$180k figure was an estimate and is removed     |
 | **Timeline**         | 8–10 weeks from engagement kickoff to final report                                                                                                        |
 | **Target start**     | Q1 2027 (after grant funding is secured)                                                                                                                  |
-| **Grant allocation** | ~60–70% of requested SCF Wave 8 funds earmarked for the audit                                                                                             |
+| **Grant allocation** | See **Grant Fund Allocation** below                                                                                                                       |
 
 **Why Trail of Bits:** They have deep Rust/WASM expertise (critical for
 Soroban), ECDSA/Ed25519 signature verification experience (core to our bridge
 security), and a track record of auditing cross-chain protocols. Halborn is the
 backup if ToB's availability doesn't align.
+
+> **Audit quote status (2026-08-15):** no written quote or letter of intent
+> (LOI) is on file yet. Outreach to **Trail of Bits** (primary) and **Halborn**
+> (backup) is in progress, with a written quote/LOI expected by **2026-09-15**.
+> Replace this note with the actual quote/LOI (or update the response date)
+> before the SCF Wave 8 grant is submitted.
+
+### Grant Fund Allocation
+
+Total SCF Wave 8 grant ask: **$200,000 USD**.
+
+| Bucket                                          | % of ask | Amount (USD) | Covers                                                                    |
+| ----------------------------------------------- | -------- | ------------ | ------------------------------------------------------------------------- |
+| Formal security audit (Trail of Bits / Halborn) | 70%      | $140,000     | Soroban + EVM contracts and off-chain services; audit-fix retesting       |
+| Pre-audit checklist completion                  | 20%      | $40,000      | E2E testnet flow, attester key management (HSM/KMS), DR runbook, risk doc |
+| Ops/infra during the audit window               | 10%      | $20,000      | Testnet hosting, monitoring, secrets manager, CI during the audit         |
+
+> Percentages are indicative and will be rebalanced against the actual quoted
+> audit cost once the Trail of Bits / Halborn quote lands.
 
 **Pre-audit requirements (from `docs/audit-checklist.md`):**
 
@@ -113,10 +136,20 @@ backup if ToB's availability doesn't align.
 - [x] Cross-contract integration tests (wrap → supply → borrow → liquidate)
 - [x] Fuzz tests for financial math
 - [x] Static analysis (clippy deny, Slither)
-- [ ] E2E testnet flow (Sepolia → Stellar Testnet)
-- [ ] Attester keys in HSM/KMS (not plaintext env vars)
-- [ ] Disaster recovery runbook tested
-- [ ] Multi-attester signing implemented (see Open TODOs below)
+- [x] E2E testnet flow (Sepolia → Stellar Testnet) — **Closed (2026-08-15)** —
+      documented manual run + tabletop review in `docs/e2e-testnet-flow.md`;
+      live testnet execution still pending funded accounts.
+- [x] Attester keys in HSM/KMS (not plaintext env vars) — **Closed
+      (2026-08-15)** — keys moved out of plain `.env`; `ATTESTER_KEYS_FILE`
+      loads them from a mounted secret (K8s Secret / Vault / Doppler). Full AWS
+      KMS / HSM signing is a funded post-grant milestone; see
+      `docs/deployment.md` § 8.
+- [x] Disaster recovery runbook tested — **Closed (2026-08-15)** — runbook
+      expanded with pause trigger conditions, a rollback procedure, and a
+      tabletop dry-run log; see `docs/disaster-recovery.md`.
+- [x] Multi-attester signing implemented — **Closed (2026-08)** — see the Open
+      TODOs entry below; on-chain `BridgeSet` (2-of-3) + off-chain threshold
+      collection in `services/payment/src/attest/signer.ts`.
 
 ## Bug bounty
 

@@ -7,8 +7,11 @@
 #   DATABASE_URL, ETHEREUM_RPC, POLYGON_RPC, SOLANA_RPC,
 #   ETHEREUM_BRIDGE, POLYGON_BRIDGE,
 #   STELLAR_RPC, STELLAR_NETWORK_PASSPHRASE, STELLAR_CONTROLLER,
-#   RELAYER_SECRET (Stellar secret key), ATTESTER_KEYS (comma-separated
-#   ed25519 secret keys), ATTESTER_THRESHOLD, LOG_LEVEL, POLL_INTERVAL_MS, PORT
+#   RELAYER_SECRET (Stellar secret key), ATTESTER_THRESHOLD, LOG_LEVEL,
+#   POLL_INTERVAL_MS, PORT — and the attester keys via EITHER
+#   ATTESTER_KEYS (comma-separated ed25519 secret keys) or, preferred,
+#   ATTESTER_KEYS_FILE (path to a mounted secret file) so keys are not
+#   plaintext env vars.
 #
 # Provision with:
 #   kubectl create secret generic payment-env --namespace spg --from-env-file=services/payment/.env

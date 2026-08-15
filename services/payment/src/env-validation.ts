@@ -1,7 +1,7 @@
 // Environment Validation
 // Validates all required environment variables and runtime conditions on startup.
 
-import { config } from "./config.js";
+import { attesters, config } from "./config.js";
 import { logger } from "./utils/logger.js";
 
 export interface EnvValidationResult {
@@ -56,7 +56,7 @@ export function validateEnvironment(): EnvValidationResult {
   }
 
   // Attester config
-  const keys = config.ATTESTER_KEYS.split(",").map((s) => s.trim());
+  const keys = attesters;
   if (keys.length < config.ATTESTER_THRESHOLD) {
     errors.push(
       `ATTESTER_THRESHOLD (${config.ATTESTER_THRESHOLD}) exceeds number of attester keys (${keys.length})`,

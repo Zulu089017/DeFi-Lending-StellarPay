@@ -1,8 +1,10 @@
 # Audit Readiness Checklist
 
 > This checklist must be completed before the first formal audit. Status: ✅
-> Mostly Complete — contracts, tests, and docs are audit-ready. Remaining items
-> are operational (E2E testnet, key management, monitoring, bug bounty).
+> Mostly Complete — contracts, tests, and docs are audit-ready. E2E testnet
+> flow, attester key management, and the DR runbook are now documented
+> (2026-08-15); remaining items are operational (load/chaos tests, bug bounty,
+> monitoring).
 
 ## Pre-audit requirements
 
@@ -37,7 +39,9 @@
 - [x] Property-based tests (random op sequences + invariant checks)
 - [x] Integration tests for full wrap → lend → borrow → liquidate flow
       (cross-contract, 10+ tests)
-- [ ] E2E tests across testnet (Ethereum Sepolia → Stellar Testnet)
+- [x] E2E tests across testnet (Ethereum Sepolia → Stellar Testnet) — documented
+      manual run + tabletop review in `docs/e2e-testnet-flow.md`; live execution
+      pending funded accounts (2026-08-15)
 - [ ] Load test: 1000 concurrent users
 - [x] API integration tests (vitest + testcontainers, 23 tests)
 - [ ] Chaos tests: kill bridge mid-flight, verify recovery
@@ -52,10 +56,13 @@
 
 ### Key management
 
-- [ ] Attester keys stored in HSM or KMS (not plaintext env vars)
+- [x] Attester keys stored in HSM or KMS (not plaintext env vars) — moved to
+      `ATTESTER_KEYS_FILE` mounted secret; full HSM/KMS is a funded post-grant
+      milestone (2026-08-15)
 - [ ] Admin multisig keys documented and access-controlled
 - [ ] Key rotation procedure tested
-- [ ] Disaster recovery runbook published and tested
+- [x] Disaster recovery runbook published and tested — pause triggers + rollback
+      procedure + tabletop dry-run log (2026-08-15)
 
 ### Deployment configuration
 

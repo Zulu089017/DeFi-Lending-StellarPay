@@ -14,7 +14,7 @@ Hi everyone! I've been building a cross-chain lending protocol on Soroban and
 wanted to share it with the community.
 
 🔗 Repo: https://github.com/Zulu089017/DeFi-Lending-Platform
-🌐 Live Demo: https://web-h21ixnvop-zulu0890s-projects.vercel.app
+🌐 Live Demo: https://app.spg.xyz
 
 What it does:
 • Wraps tokens from EVM chains into Stellar-native assets via a 2-of-3
@@ -52,17 +52,17 @@ sub-cent fees.
 - EVM Bridge.sol with EIP-712 typed signatures
 - 2-of-3 multi-attester bridge signing (threshold enforced on-chain)
 - 103 passing tests (clippy clean, CI green)
-- Next.js dashboard live at vercel.app
+- Next.js dashboard live at app.spg.xyz
 - TypeScript SDK published
 - Full documentation: architecture, invariants, threat model, deployment guide
 
 **Seeking SCF Wave 8 funding for:**
-- Trail of Bits security audit ($120k–$180k)
+- Trail of Bits security audit (quote pending)
 - Multi-attester key storage implementation (HSM, cold storage, hot server)
 
 **Links:**
 - GitHub: https://github.com/Zulu089017/DeFi-Lending-Platform
-- Live demo: https://web-h21ixnvop-zulu0890s-projects.vercel.app
+- Live demo: https://app.spg.xyz
 - Contract addresses: DEPLOYMENTS.md in repo
 
 Happy to answer questions or take code review feedback!
@@ -109,7 +109,7 @@ Built something that bridges Ethereum and Stellar for lending:
 🧪 Testnet deployed, 103 tests, CI green
 
 Repo: https://github.com/Zulu089017/DeFi-Lending-Platform
-Demo: https://web-h21ixnvop-zulu0890s-projects.vercel.app
+Demo: https://app.spg.xyz
 
 Stack: Solidity (OZ 5.x, UUPS proxy), Rust (Soroban), TypeScript (bridge
 middleware, Next.js dashboard), Postgres (indexer)
@@ -143,7 +143,7 @@ implementation!
    production key storage (HSM + cold + hot)
 
 🔗 GitHub: https://github.com/Zulu089017/DeFi-Lending-Platform
-🌐 Demo: https://web-h21ixnvop-zulu0890s-projects.vercel.app
+🌐 Demo: https://app.spg.xyz
 
 RTs and ⭐ appreciated! 🙏
 ```
@@ -158,7 +158,7 @@ https://github.com/Zulu089017/DeFi-Lending-Platform:
 1. **Description:** "Cross-chain lending protocol on Stellar Soroban — wrap EVM
    tokens, supply, borrow, auto-liquidate. Testnet deployed. SCF Wave 8."
 
-2. **Website:** https://web-h21ixnvop-zulu0890s-projects.vercel.app
+2. **Website:** https://app.spg.xyz
 
 3. **Topics:** `stellar` `soroban` `defi` `lending` `bridge` `cross-chain`
    `rust` `nextjs` `typescript` `solidity` `smart-contracts` `soroban-sdk`

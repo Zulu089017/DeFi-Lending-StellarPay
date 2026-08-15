@@ -43,10 +43,30 @@
 
 ## Web Dashboard
 
-| App           | URL                                                                                                        |
-| ------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Dashboard** | [https://web-h21ixnvop-zulu0890s-projects.vercel.app](https://web-h21ixnvop-zulu0890s-projects.vercel.app) |
-| Alias         | [https://web-steel-three-53.vercel.app](https://web-steel-three-53.vercel.app)                             |
+| App           | URL                                        |
+| ------------- | ------------------------------------------ |
+| **Dashboard** | [https://app.spg.xyz](https://app.spg.xyz) |
+
+### Custom domain (Vercel)
+
+The dashboard is served from a **stable production domain** (`app.spg.xyz`), not
+a per-PR Vercel preview alias, so the URL survives redeploys. Setup steps
+(require Vercel project + DNS provider access — done out-of-band, not via this
+repo):
+
+1. In the Vercel project **Settings → Domains**, add `app.spg.xyz` and assign it
+   to the `production` branch (not the per-PR preview alias).
+2. Add the DNS record Vercel shows for `app.spg.xyz` at the `spg.xyz` DNS
+   provider (typically a `CNAME` → `cname.vercel-dns.com`, or an `A` record to
+   `76.76.21.21` for the apex).
+3. Verify TLS issues automatically via Let's Encrypt; confirm the dashboard
+   resolves and survives a redeploy.
+4. Keep `apps/web/vercel.json` unchanged — the domain is configured in the
+   Vercel dashboard, not in the repo.
+
+> **Status (2026-08-15):** all repo references have been moved to `app.spg.xyz`;
+> the Vercel project + DNS changes are pending on the owner's Vercel/DNS
+> credentials.
 
 ---
 

@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-pre--audit_|_testnet_only-yellow.svg)](docs/security.md)
 [![Audit](https://img.shields.io/badge/Audit-Planned_Q1_2027-lightgrey.svg)](docs/security.md#audit)
-[![Demo](https://img.shields.io/badge/Demo-Live_↗-success.svg)](https://web-h21ixnvop-zulu0890s-projects.vercel.app)
+[![Demo](https://img.shields.io/badge/Demo-Live_↗-success.svg)](https://app.spg.xyz)
 [![Soroban](https://img.shields.io/badge/Soroban-27-blueviolet.svg)](contracts/Cargo.toml)
 [![Solidity](https://img.shields.io/badge/Solidity-%5E0.8.24-363636.svg)](contracts/hardhat.config.ts)
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF.svg)](.github/workflows/ci.yml)
@@ -26,11 +26,10 @@ Stellar. These wrapped assets can then be used in a fully on-chain lending
 protocol featuring automated liquidation, powered by Stellar's near-instant
 settlement.
 
-> 🔗 **Live Demo:**
-> [web-h21ixnvop-zulu0890s-projects.vercel.app](https://web-h21ixnvop-zulu0890s-projects.vercel.app)
-> — Explore the lending dashboard, bridge tokens, and monitor liquidations on
-> Stellar testnet. All 7 Soroban contracts deployed and verified. See
-> [DEPLOYMENTS.md](DEPLOYMENTS.md) for contract addresses.
+> 🔗 **Live Demo:** [app.spg.xyz](https://app.spg.xyz) — Explore the lending
+> dashboard, bridge tokens, and monitor liquidations on Stellar testnet. All 7
+> Soroban contracts deployed and verified. See [DEPLOYMENTS.md](DEPLOYMENTS.md)
+> for contract addresses.
 
 ## 🎥 Demo
 
@@ -257,6 +256,9 @@ pnpm dev          # Start all dev servers
 - [Protocol Invariants](docs/invariants.md) — what an audit will check
 - [Security Model & Threat Model](docs/security.md) — known TODOs and disclosure
   policy
+- [Risk & Economic Design](docs/risk.md) — oracle bounds, bad debt, circuit
+  breakers
+- [E2E Testnet Flow](docs/e2e-testnet-flow.md) — Sepolia → Stellar manual run
 - [Deployments](DEPLOYMENTS.md) — testnet contract addresses & live demo URL
 - [Deployment Guide](docs/deployment.md)
 - [Polyrepo Guide](docs/polyrepo.md)
@@ -265,6 +267,17 @@ pnpm dev          # Start all dev servers
 - [Changelog](CHANGELOG.md) · [Security Policy](SECURITY.md)
 
 ---
+
+## 👥 Team
+
+StellarPay is built by a small, **pseudonymous** team led by
+[@ZuLu0890](https://github.com/ZuLu0890) (lead developer — protocol
+architecture, Soroban contracts, bridge middleware, and SDK). The project is an
+**unfunded side project** built in the open; the SCF Wave 8 grant is the first
+funding it is seeking, primarily to pay for a formal audit. We build
+pseudonymously as a deliberate choice — individual bios and prior-experience
+details are available to grant reviewers and auditors on request. See
+[CONTRIBUTORS.md](CONTRIBUTORS.md).
 
 ## 🤝 Contributing
 
@@ -285,4 +298,6 @@ link above. Health factor checks, collateral validation, and liquidation
 invariants are implemented and tested (103 tests pass, 26 invariant tests). **Do
 not deposit real assets.** A formal audit, bug-bounty program, and coordinated
 disclosure policy are tracked in [`SECURITY.md`](SECURITY.md) and
-[`docs/security.md`](docs/security.md).
+[`docs/security.md`](docs/security.md). The SCF Wave 8 grant budget and fund
+allocation are documented in
+[`docs/security.md` § Grant Fund Allocation](docs/security.md#grant-fund-allocation).

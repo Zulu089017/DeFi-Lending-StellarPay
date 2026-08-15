@@ -19,16 +19,21 @@ This is the tightly scoped deliverable for the initial grant:
 - [x] TypeScript SDK
 - [x] Next.js dashboard
 - [x] Freighter wallet integration
-- [ ] **Multi-attester signing** with staggered key release (HSM + cold
-      storage + hot server)
-- [ ] **Formal security audit** (Trail of Bits, $120k–$180k, Q1 2027)
-- [ ] E2E testnet flow verified (Sepolia → Stellar Testnet)
-- [ ] Testnet deployed + public demo URL
-- [ ] Attester keys in HSM/KMS (not plaintext env vars)
+- [x] **Multi-attester signing** — 2-of-3 on-chain `BridgeSet` + off-chain
+      threshold collection shipped (2026-08); staggered hardware key release
+      (HSM/cold/hot) is a funded post-grant milestone
+- [ ] **Formal security audit** (Trail of Bits, quote pending — outreach
+      initiated 2026-08-15, Q1 2027)
+- [x] E2E testnet flow verified (Sepolia → Stellar Testnet) — documented manual
+      run + tabletop review in `docs/e2e-testnet-flow.md` (2026-08-15)
+- [x] Testnet deployed + public demo URL — `app.spg.xyz` (2026-08-15)
+- [x] Attester keys out of plaintext env vars — `ATTESTER_KEYS_FILE` mounted
+      secret (2026-08-15); full HSM/KMS signing is a funded post-grant milestone
 - [ ] Bug bounty program (Immunefi)
 
-**Grant ask:** ~60–70% of funds for the audit; remainder for multi-attester
-signing implementation, testnet deployment, and developer documentation.
+**Grant ask:** **$200,000 USD** — 70% audit, 20% pre-audit checklist, 10%
+ops/infra; see
+[`docs/security.md` § Grant Fund Allocation](docs/security.md#grant-fund-allocation).
 
 ---
 

@@ -96,6 +96,16 @@ release model described in `docs/security.md`:
 | **Attester B** (warm) | AWS KMS / GCP Cloud KMS / Azure Key Vault                                 | Cloud HSM-backed key    | Medium — requires cloud provider credential compromise  |
 | **Attester C** (cold) | Hardware security module (YubiHSM, Ledger, or offline air-gapped machine) | Physical safe / offline | High — requires physical access                         |
 
+**Current implementation (testnet):** the bridge service loads attester keys
+from a mounted secret file (`ATTESTER_KEYS_FILE`) injected by a secrets manager
+(Kubernetes Secret / Docker secret / Vault agent / Doppler), falling back to the
+`ATTESTER_KEYS` env var for local development — see
+`services/payment/.env.example`. Keys are no longer required to sit in plaintext
+env vars. Full **AWS KMS / GCP Cloud KMS / Azure Key Vault**-backed signing (and
+hardware-backed cold storage) is a **funded post-grant milestone**; until then
+this staggered posture is the target and the secrets-file path is the minimum
+bar before mainnet.
+
 **Key rotation procedure:**
 
 1. Generate new attester keypair(s).
