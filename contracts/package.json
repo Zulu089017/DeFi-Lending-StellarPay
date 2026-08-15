@@ -13,10 +13,10 @@
     "dotenv": "^16.4.5",
     "hardhat": "^2.22.0",
     "ts-node": "^10.9.2",
-    "typescript": "~5.7.0"
+    "typescript": "~5.9.3"
   },
   "dependencies": {
     "ts-node": "^10.9.2",
-    "typescript": "~5.7.0"
+    "typescript": "~5.9.3"
   }
 }
