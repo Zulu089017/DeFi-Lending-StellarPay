@@ -37,6 +37,9 @@ settlement.
   <img src="https://cdn.loom.com/sessions/thumbnails/b3e2b8820d4e46218986618347c8a7ff.jpg" alt="StellarPay Demo" width="600">
 </a>
 
+▶️ **Watch the demo:**
+<https://www.loom.com/share/b3e2b8820d4e46218986618347c8a7ff>
+
 _3-minute walkthrough: cross-chain wrap → supply → borrow → liquidation on
 Stellar testnet._ See [DEMO.md](DEMO.md) for the scene-by-scene recording
 script.
