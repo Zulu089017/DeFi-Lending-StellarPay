@@ -33,11 +33,13 @@ settlement.
 
 ## 🎥 Demo
 
-> 📹 **Video walkthrough coming soon.** See [DEMO.md](DEMO.md) for the
-> scene-by-scene recording script covering the full cross-chain flow: wrap →
-> supply → borrow → liquidation on Stellar testnet.
->
-> _After recording: replace this section with a YouTube/Loom embed._
+<a href="https://www.loom.com/share/b3e2b8820d4e46218986618347c8a7ff">
+  <img src="https://cdn.loom.com/sessions/thumbnails/b3e2b8820d4e46218986618347c8a7ff.jpg" alt="StellarPay Demo" width="600">
+</a>
+
+_3-minute walkthrough: cross-chain wrap → supply → borrow → liquidation on
+Stellar testnet._ See [DEMO.md](DEMO.md) for the scene-by-scene recording
+script.
 
 ---
 
