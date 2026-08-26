@@ -5,6 +5,7 @@ import { Address as ScAddress } from "@stellar/stellar-sdk";
 import { attesters, config } from "../config.js";
 import { logger } from "../utils/logger.js";
 import { recordAttestError } from "../utils/metrics.js";
+import { sourceAddrToBytes } from "../validation.js";
 
 /**
  * Canonical payload format (must match `build_canonical_payload` in
@@ -41,17 +42,9 @@ export function payloadHash(args: {
   // 2. chain_id (u32 LE)
   const cid = Buffer.alloc(4);
   cid.writeUInt32LE(args.chainId >>> 0);
-  bufs.push(cid);
-  // 3. source_addr (32 raw bytes)
-  const saHex = args.sourceToken.startsWith("0x") ? args.sourceToken.slice(2) : args.sourceToken;
-  let sa: Buffer;
-  if (/^[0-9a-fA-F]{64}$/.test(saHex)) {
-    sa = Buffer.from(saHex, "hex");
-  } else {
-    sa = Buffer.alloc(32);
-    Buffer.from(args.sourceToken, "ascii").subarray(0, 32).copy(sa);
-  }
-  bufs.push(sa);
+  bufs.push(cid);  // 3. source_addr (32 raw bytes) — shared encoding with the on-chain
+  //    BytesN<32> (see src/validation.ts)
+  bufs.push(sourceAddrToBytes(args.sourceToken));
   // 4. amount (i64 LE) — clamp to i64 range
   const amt = Buffer.alloc(8);
   amt.writeBigInt64LE(BigInt.asIntN(64, args.amount));

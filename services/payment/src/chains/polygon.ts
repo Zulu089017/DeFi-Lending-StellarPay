@@ -6,7 +6,10 @@ import { logger } from "../utils/logger.js";
 
 const BRIDGE_ABI = [
   "event Locked(address indexed sender, address indexed token, uint256 amount, bytes32 indexed stellarDest, bytes32 salt, uint256 nonce)",
+  "event Burned(address indexed sender, address indexed token, uint256 amount, bytes32 indexed stellarDest, bytes32 salt, uint256 nonce)",
 ];
+
+// Both `Locked` and `Burned` mint on Stellar — see chains/ethereum.ts.
 
 const POLLER_NAME = "polygon";
 
@@ -36,7 +39,12 @@ export class PolygonWatcher {
       address: config.POLYGON_BRIDGE,
       fromBlock: from,
       toBlock: to,
-      topics: [this.iface.getEvent("Locked")!.topicHash],
+      topics: [
+        [
+          this.iface.getEvent("Locked")!.topicHash,
+          this.iface.getEvent("Burned")!.topicHash,
+        ],
+      ],
     });
 
     const events: SourceEvent[] = [];

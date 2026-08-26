@@ -14,6 +14,12 @@ import { collectSignatures, payloadHash } from "../attest/signer.js";
 import type { StellarMintRequest, SourceChainId, SourceEvent } from "../types.js";
 import { logger } from "../utils/logger.js";
 import {
+  isMintableAmount,
+  isValidSalt,
+  isValidStellarDest,
+  sourceAddrToBytes,
+} from "../validation.js";
+import {
   bridgeEventsIngestedTotal,
   bridgeMintFailuresTotal,
   bridgeMintsTotal,
@@ -26,6 +32,25 @@ const CHAIN_IDS: Record<SourceChainId, number> = {
   polygon: 137,
   solana: 0,
 };
+
+/** A pending mint request is dead-lettered after this many failed attempts
+ *  so one permanently-failing request can't starve the rest of the queue. */
+const MAX_MINT_ATTEMPTS = 10;
+
+/** Returns a human-readable reason when `ev` can never mint on-chain, or
+ *  null when it is safe to enqueue. */
+function mintValidationError(ev: SourceEvent, stellarDest: string): string | null {
+  if (!isMintableAmount(ev.amount)) {
+    return `amount ${ev.amount} outside mintable range [1, i64::MAX]`;
+  }
+  if (!isValidSalt(ev.salt)) {
+    return `salt is not 32 bytes hex: ${ev.salt}`;
+  }
+  if (!isValidStellarDest(stellarDest)) {
+    return `invalid Stellar destination: ${stellarDest}`;
+  }
+  return null;
+}
 
 // NOTE: The on-chain `lending_controller.wrap` now accepts a Vec of
 // (key_index, ed25519_signature) pairs and enforces a configurable threshold
@@ -53,6 +78,38 @@ export class StellarMinter {
       logger.warn({ txHash: ev.txHash }, "skipping stellar event in mint queue");
       return;
     }
+
+    // Validate BEFORE enqueueing. A request that can never mint on-chain
+    // (amount outside the i64 range the payload hashes, malformed salt or
+    // destination) would otherwise sit in the pending queue forever and
+    // starve every event behind it. Record it as `failed` so it is visible
+    // in the DB and metrics instead of silently dropped or retried.
+    const validationError = mintValidationError(ev, stellarDest);
+    if (validationError) {
+      logger.error(
+        { txHash: ev.txHash, reason: validationError },
+        "rejecting source event: invalid for minting",
+      );
+      await prisma.mintRequest.upsert({
+        where: { sourceTx_sourceLogIndex: { sourceTx: ev.txHash, sourceLogIndex: ev.logIndex } },
+        create: {
+          chain: ev.chain,
+          sourceTx: ev.txHash,
+          sourceLogIndex: ev.logIndex,
+          sourceAddress: ev.token,
+          amount: ev.amount,
+          to: stellarDest,
+          salt: ev.salt,
+          status: "failed",
+          attempts: 1,
+          lastError: validationError,
+        },
+        update: {},
+      });
+      bridgeMintFailuresTotal.inc();
+      return;
+    }
+
     await prisma.mintRequest.upsert({
       where: { sourceTx_sourceLogIndex: { sourceTx: ev.txHash, sourceLogIndex: ev.logIndex } },
       create: {
@@ -82,6 +139,19 @@ export class StellarMinter {
     let failed = 0;
 
     for (const req of pending) {
+      const attempts = req.attempts + 1;
+      // Dead-letter: a request that keeps failing (e.g. the source chain
+      // reorged the event away) must not block the queue forever. After
+      // MAX_MINT_ATTEMPTS it is marked failed so later events drain.
+      if (attempts > MAX_MINT_ATTEMPTS) {
+        await prisma.mintRequest.update({
+          where: { sourceTx_sourceLogIndex: { sourceTx: req.sourceTx, sourceLogIndex: req.sourceLogIndex } },
+          data: { status: "failed", attempts, lastError: "max mint attempts exceeded" },
+        });
+        logger.error({ req }, "mint request dead-lettered after max attempts");
+        failed++;
+        continue;
+      }
       try {
         const req_typed: StellarMintRequest = {
           chain: req.chain as SourceChainId,
@@ -93,11 +163,22 @@ export class StellarMinter {
           salt: req.salt,
         };
         const ok = await this.mint(req_typed);
-        if (ok) minted++;
-        else failed++;
+        if (ok) {
+          minted++;
+        } else {
+          failed++;
+          await prisma.mintRequest.update({
+            where: { sourceTx_sourceLogIndex: { sourceTx: req.sourceTx, sourceLogIndex: req.sourceLogIndex } },
+            data: { attempts, lastError: "mint attempt failed" },
+          });
+        }
       } catch (err) {
-        logger.error({ err, req }, "mint failed");
         failed++;
+        await prisma.mintRequest.update({
+          where: { sourceTx_sourceLogIndex: { sourceTx: req.sourceTx, sourceLogIndex: req.sourceLogIndex } },
+          data: { attempts, lastError: String(err) },
+        });
+        logger.error({ err, req }, "mint failed");
       }
     }
 
@@ -163,21 +244,10 @@ export class StellarMinter {
       return false;
     }
     const saltScval = xdr.ScVal.scvBytes(saltBytes);
-    const nonceU64 = nativeToScVal(nonce, { type: "u64" });
-
-    // sourceAddress is now a 32-byte BytesN<32> on-chain. Accept either
-    // a 32-byte hex string (with or without 0x) or an ASCII string padded
-    // to 32 bytes.
-    const saHex = req.sourceAddress.startsWith("0x")
-      ? req.sourceAddress.slice(2)
-      : req.sourceAddress;
-    let sourceAddrBytes: Buffer;
-    if (/^[0-9a-fA-F]{64}$/.test(saHex)) {
-      sourceAddrBytes = Buffer.from(saHex, "hex");
-    } else {
-      sourceAddrBytes = Buffer.alloc(32);
-      Buffer.from(req.sourceAddress, "ascii").subarray(0, 32).copy(sourceAddrBytes);
-    }
+    const nonceU64 = nativeToScVal(nonce, { type: "u64" });    // sourceAddress is a 32-byte BytesN<32> on-chain. Shared encoding with
+    // the signer's payloadHash (see src/validation.ts) — the C-6 canary
+    // pins the digest on both sides.
+    const sourceAddrBytes = sourceAddrToBytes(req.sourceAddress);
     const sourceAddrScval = xdr.ScVal.scvBytes(sourceAddrBytes);
 
     const source = await this.server.loadAccount(this.keypair.publicKey());
@@ -210,6 +280,18 @@ export class StellarMinter {
       logger.info({ tx: result.hash, sourceTx: req.sourceTx }, "minted wTKN on Stellar");
       return true;
     } catch (err) {
+      const detail =
+        typeof err === "object" && err !== null ? JSON.stringify(err) : String(err);
+      // Idempotency: if the previous attempt actually landed on-chain but
+      // its response was lost (RPC timeout), the retry reverts with
+      // "salt already used". Mark the request minted so it is not retried
+      // forever — the wrap did happen.
+      if (detail.includes("salt already used")) {
+        await markMinted(req.sourceTx, req.sourceLogIndex, "replayed-salt");
+        bridgeMintsTotal.inc();
+        logger.warn({ sourceTx: req.sourceTx }, "salt replay — wrap already landed, marking minted");
+        return true;
+      }
       bridgeMintFailuresTotal.inc();
       logger.error({ err, sourceTx: req.sourceTx }, "submit failed");
       return false;

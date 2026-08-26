@@ -31,14 +31,19 @@ export class StellarWatcher {
 
     const events: UnwrapEvent[] = [];
     for (const op of page.records) {
+      // Only contract-call operations on the controller can be unwraps.
+      // Record everything else (payments, manage data, …) would fabricate
+      // unwrap rows and poison a future release pipeline.
+      const type = (op.type ?? "").toLowerCase();
+      if (!type.includes("invoke")) continue;
       // Decode the `unwrap` event from the operation memo or transaction
       // envelope. For the scaffold we accept that the off-chain indexer
-      // populates this; here we just store raw operations.
+      // populates this; here we just store the raw operation.
       const ev: UnwrapEvent = {
         chain: "stellar",
         txHash: op.transaction_hash,
         user: op.source_account,
-        amount: 0n, // populated by indexer
+        amount: 0n, // populated by indexer — the release pipeline is not wired yet
         sourceChain: "ethereum",
         sourceAddr: "",
         nonce: op.id,

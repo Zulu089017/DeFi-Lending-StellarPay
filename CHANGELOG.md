@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **Fixed `lending_pool` interest accrual never running.** `add_asset` did not
+  seed the `LastAccrual` clock and `accrue_interest` treats a missing key as
+  "now", so the first accrual always no-opped and the borrow index never grew.
+  `add_asset` now stores the current ledger sequence; the new
+  `invariant_L8_accrue_does_not_change_total_borrow` regression test proves
+  the index grows while `total_borrow` stays constant.
+- **Bridge mint queue hardening** (`services/payment`): `Locked` *and* `Burned`
+  source events are now watched (previously burned canonical tokens were never
+  wrapped); amounts outside `[1, i64::MAX]` are rejected at enqueue (the TS
+  signer wraps while the on-chain controller saturates, so larger amounts can
+  never verify); requests are dead-lettered after 10 failed attempts instead of
+  blocking the queue forever; a `salt already used` submit error is treated as
+  already-minted (submit-timeout idempotency); Stellar watcher only records
+  contract-call ops as unwraps.
+- **Configurable mint rate limit** (`lending_controller.set_mint_rate_limit`,
+  admin-only) with the previous default preserved; C-3 now has a dedicated
+  test (`invariant_C3_mint_rate_limit_enforced`).
 - **Closed invariant C-1** (ed25519 attestation verification for
   `lending_controller.wrap`): `wrap` now rejects any attestation that is not a
   valid ed25519 signature over `sha256(build_canonical_payload)` from the
@@ -28,6 +45,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   domain binding works.
 
 ### Added
+- **Prometheus + Grafana monitoring**: every TS service (bridge, relayer,
+  indexer, api) exposes `/metrics` with real counters; scrape + alerting
+  configs, a provisioned Grafana dashboard, docker-compose services, and k8s
+  manifests live in `infra/monitoring/` and
+  `infra/kubernetes/08-monitoring.yaml` (see `docs/monitoring.md`).
+- **Redis-backed API rate limiting** (`apps/api`): shared fixed-window limiter
+  via `REDIS_URL` with in-memory fallback, per-route 60/min cap on quote
+  endpoints, WebSocket per-IP/message caps, rate-limit headers, and unit tests
+  (`src/tests/rate-limiter.test.ts`).
+- Invariant tests L-7 (`deposit shares never negative`), L-8 (accrual leaves
+  `total_borrow` unchanged), C-5 (`set_paused` admin-only, selective-auth
+  mock), W-3…W-6 (unauthorized burn, minter-only mint, one-shot init, positive
+  amounts), and B-6 pause coverage for `release`/`burn` in `Bridge.test.ts`.
+- `services/payment/src/validation.ts` with shared source-address encoding and
+  mint-path validation helpers (+ unit tests).
+- Root eslint config now parses TypeScript (`@typescript-eslint` parser +
+  plugin) — `pnpm lint` no longer crashes on `.ts` files.
 - `SECURITY.md` and `CHANGELOG.md` at the repository root.
 - `.github/CODEOWNERS` for default reviewers.
 - `.github/dependabot.yml` for npm, cargo, and GitHub Actions ecosystems.
@@ -66,6 +100,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   See `api/README.md` → “Testing”.
 
 ### Changed
+- `turbo.json`: the `test` task now depends on `prisma:generate`, so
+  `pnpm test` works on a fresh checkout (apps/api tests previously failed
+  with "@prisma/client did not initialize yet").
+- `services/payment` Prisma schema: `MintRequest` gains `attempts` and
+  `lastError` for dead-letter accounting.
 - `.github/workflows/ci.yml` pins `dtolnay/rust-toolchain@1.91.0` in
   the `stellar-contracts` job (was `@stable`, which would also fail
   on 1.97+; the earlier `@1.81.0` pin was superseded as part of the

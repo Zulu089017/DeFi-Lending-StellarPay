@@ -119,6 +119,14 @@ impl LendingPool {
             &DataKey::BorrowIndex(cfg.asset.clone()),
             &1_000_000_000_000_000_000i128,
         );
+        // Seed the accrual clock at asset-config time. `accrue_interest`
+        // treats a missing `LastAccrual` as "now" (unwrap_or), so without
+        // this the first accrual would always no-op and interest would
+        // never accrue (L-8 regression test).
+        env.storage().persistent().set(
+            &DataKey::LastAccrual(cfg.asset.clone()),
+            &env.ledger().sequence(),
+        );
     }
 
     // ──────────────────────── SUPPLY / WITHDRAW ────────────────────────
@@ -839,6 +847,93 @@ mod tests {
         let repaid = pool.repay(&user, &asset, &1_000_000_000);
         assert_eq!(repaid, d, "repay must be capped at outstanding debt");
         assert_eq!(pool.debt_of(&user, &asset), 0);
+    }
+
+    /// **L-7:** `total_deposit_shares(asset) >= 0` always — share accounting
+    /// never goes negative across supply/withdraw cycles.
+    #[test]
+    fn invariant_L7_deposit_shares_never_negative() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let user = Address::generate(&env);
+        let asset = Symbol::new(&env, "XLM");
+        let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
+        pool.initialize(&admin);
+        pool.add_asset(&AssetConfig {
+            asset: asset.clone(),
+            collateral_vault: Address::generate(&env),
+            oracle: Address::generate(&env),
+            ltoken: Address::generate(&env),
+            base_rate_bps: 0,
+            slope1_bps: 500,
+            slope2_bps: 5_000,
+            kink_bps: 8_000,
+            reserve_factor_bps: 1_000,
+            ltv_bps: 7_500,
+        });
+        // `deposit_shares_total` is a private view; with a single user the
+        // user's share balance IS the aggregate, and per-user shares must
+        // never underflow below zero across supply/withdraw cycles.
+        assert_eq!(pool.deposit_shares_of(&user, &asset), 0);
+
+        pool.supply(&user, &asset, &1_000_000);
+        let shares = pool.deposit_shares_of(&user, &asset);
+        assert!(shares >= 0, "shares must never go negative");
+        pool.withdraw(&user, &asset, &shares);
+        assert_eq!(pool.deposit_shares_of(&user, &asset), 0);
+
+        // Withdrawing more than held reverts (L-5), so a fresh cycle still
+        // keeps the balance non-negative.
+        pool.supply(&user, &asset, &500);
+        pool.withdraw(&user, &asset, &pool.deposit_shares_of(&user, &asset));
+        assert!(pool.deposit_shares_of(&user, &asset) >= 0);
+    }
+
+    /// **L-8:** `accrue_interest` changes the borrow index but never the
+    /// `total_borrow` (interest is index-based, not principal-based).
+    #[test]
+    fn invariant_L8_accrue_does_not_change_total_borrow() {
+        use soroban_sdk::testutils::Ledger as _;
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let u1 = Address::generate(&env);
+        let u2 = Address::generate(&env);
+        let asset = Symbol::new(&env, "XLM");
+        let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
+        pool.initialize(&admin);
+        pool.add_asset(&AssetConfig {
+            asset: asset.clone(),
+            collateral_vault: Address::generate(&env),
+            oracle: Address::generate(&env),
+            ltoken: Address::generate(&env),
+            base_rate_bps: 0,
+            slope1_bps: 500,
+            slope2_bps: 5_000,
+            kink_bps: 8_000,
+            reserve_factor_bps: 1_000,
+            ltv_bps: 7_500,
+        });
+        pool.supply(&u1, &asset, &1_000_000);
+        pool.borrow(&u1, &asset, &200_000);
+
+        let total_before = pool.total_borrow(&asset);
+        let idx_before = pool.borrow_index(&asset);
+
+        // Advance the ledger so interest can accrue, then trigger accrual
+        // through a state-changing entry point (supply).
+        env.ledger()
+            .set_sequence_number(env.ledger().sequence() + 100_000);
+        pool.supply(&u2, &asset, &1);
+
+        // The index must have grown (accrual ran)…
+        assert!(
+            pool.borrow_index(&asset) > idx_before,
+            "borrow index should increase with time"
+        );
+        // …but total_borrow is untouched by accrual (L-8).
+        assert_eq!(pool.total_borrow(&asset), total_before);
     }
 
     /// **L-9:** `borrow_apy_bps` is monotone non-decreasing in utilization.

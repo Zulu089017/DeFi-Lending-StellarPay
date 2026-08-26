@@ -182,6 +182,65 @@ describe("Bridge", () => {
     ).to.be.reverted; // OZ Pausable reverts without a custom error
   });
 
+  it("rejects burn when paused (B-6)", async () => {
+    const { owner, user, token, bridge } = await deploy();
+    await bridge.connect(owner).setPaused(true);
+    const stellarDest = ethers.hexlify(ethers.randomBytes(32));
+    const salt = ethers.hexlify(ethers.randomBytes(32));
+    // The pause modifier fires before the burnFrom interaction, so the
+    // token not implementing burnFrom is irrelevant — any burn call
+    // reverts while paused.
+    await expect(
+      bridge
+        .connect(user)
+        .burn(await token.getAddress(), ethers.parseEther("10"), stellarDest, salt),
+    ).to.be.reverted; // OZ Pausable reverts without a custom error
+  });
+
+  it("rejects release when paused even with a valid quorum (B-6)", async () => {
+    const { owner, attester1, attester2, recipient, token, bridge } = await deploy();
+    const amount = ethers.parseEther("1");
+    const stellarTxHash = ethers.hexlify(ethers.randomBytes(32));
+    const nonce = 1n;
+    const chainId = (await ethers.provider.getNetwork()).chainId;
+
+    const { sig: sig1 } = await signRelease(
+      await bridge.getAddress(),
+      Number(chainId),
+      attester1,
+      await token.getAddress(),
+      recipient.address,
+      amount,
+      stellarTxHash,
+      nonce,
+    );
+    const { sig: sig2 } = await signRelease(
+      await bridge.getAddress(),
+      Number(chainId),
+      attester2,
+      await token.getAddress(),
+      recipient.address,
+      amount,
+      stellarTxHash,
+      nonce,
+    );
+
+    await bridge.connect(owner).setPaused(true);
+    // A valid 2-of-3 quorum still cannot release while paused.
+    await expect(
+      bridge
+        .connect(recipient)
+        .release(
+          await token.getAddress(),
+          recipient.address,
+          amount,
+          stellarTxHash,
+          nonce,
+          [sig1, sig2],
+        ),
+    ).to.be.reverted; // OZ Pausable reverts without a custom error
+  });
+
   it("rejects zero destination (B-2: invalid dest)", async () => {
     const { user, token, bridge } = await deploy();
     const salt = ethers.hexlify(ethers.randomBytes(32));

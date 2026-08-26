@@ -52,6 +52,10 @@ pub enum DataKey {
     /// Max mints per hour (circuit breaker)
     MintWindowStart,
     MintWindowCount,
+    /// Configurable per-hour mint cap (defaults to `MAX_PER_HOUR`); set via
+    /// `set_mint_rate_limit` so deployments can tune the circuit breaker
+    /// without a redeploy and tests can exercise the branch with a small cap.
+    MintRateLimit,
 }
 
 #[contracttype]
@@ -418,6 +422,20 @@ impl LendingController {
         env.storage().instance().set(&DataKey::Paused, &paused);
     }
 
+    /// Configure the per-hour mint cap (circuit breaker, C-3). Admin-only.
+    /// Defaults to `MAX_PER_HOUR` (10B in 7-dec) when unset. Setting a
+    /// smaller cap tightens the bridge's worst-case mint exposure;
+    /// production should tune this per deployment.
+    pub fn set_mint_rate_limit(env: Env, max_per_hour: i128) {
+        Self::require_admin(&env);
+        if max_per_hour <= 0 {
+            panic!("max_per_hour must be positive");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::MintRateLimit, &max_per_hour);
+    }
+
     /// Propose a new bridge attester set. Any admin can propose; the change
     /// takes effect only after `execute_bridge` is called post-timelock.
     pub fn propose_bridge(env: Env, bridge_keys: Vec<BytesN<32>>, bridge_threshold: u32) {
@@ -730,8 +748,13 @@ impl LendingController {
     }
 
     fn check_mint_rate(env: &Env) {
-        const MAX_PER_HOUR: i128 = 1_000_000_000_000; // 10B in 7 dec — adjust per deployment
+        const MAX_PER_HOUR: i128 = 1_000_000_000_000; // 10B in 7 dec — default cap
         const WINDOW_LEDGERS: u64 = 1_800; // ~1 hour at 5s/ledger
+        let cap: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MintRateLimit)
+            .unwrap_or(MAX_PER_HOUR);
         let now: u64 = env.ledger().sequence().into();
         let start: u64 = env
             .storage()
@@ -752,7 +775,7 @@ impl LendingController {
                 .set(&DataKey::MintWindowCount, &1i128);
             return;
         }
-        if count >= MAX_PER_HOUR {
+        if count >= cap {
             panic!("mint rate exceeded");
         }
         env.storage()
@@ -978,6 +1001,172 @@ mod tests {
             &salt,
             &0u64,
         );
+    }
+
+    /// **C-3:** The rate of `wrap` calls cannot exceed the configured per-hour
+    /// cap (circuit breaker) over the window.
+    #[test]
+    #[should_panic]
+    fn invariant_C3_mint_rate_limit_enforced() {
+        let TestEnv { env, ctrl, .. } = setup();
+        let signer = ed25519_dalek::SigningKey::from_bytes(&[3u8; 32]);
+        ctrl.set_bridge(
+            &soroban_sdk::vec![
+                &env,
+                BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
+            ],
+            &1u32,
+        );
+        // Tighten the circuit breaker so the test can trip it.
+        ctrl.set_mint_rate_limit(&3i128);
+
+        let chain_id = 1u32;
+        let src = BytesN::from_array(&env, &[4u8; 32]);
+        let to = Address::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        );
+        // Three mints fit under the cap…
+        for i in 0u8..3 {
+            let salt = BytesN::from_array(&env, &[i; 32]);
+            let sig = valid_attestation(&env, &signer, chain_id, &src, 1_000i128, &to, &salt, 7u64);
+            ctrl.wrap(
+                &attestations(&env, 0, &sig),
+                &chain_id,
+                &src,
+                &1_000i128,
+                &to,
+                &salt,
+                &7u64,
+            );
+        }
+        // …the fourth exceeds it.
+        let salt4 = BytesN::from_array(&env, &[9u8; 32]);
+        let sig4 = valid_attestation(&env, &signer, chain_id, &src, 1_000i128, &to, &salt4, 7u64);
+        ctrl.wrap(
+            &attestations(&env, 0, &sig4),
+            &chain_id,
+            &src,
+            &1_000i128,
+            &to,
+            &salt4,
+            &7u64,
+        );
+    }
+
+    /// **C-5 (positive):** an admin can pause.
+    #[test]
+    fn test_C5_admin_can_pause() {
+        use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let ctrl_id = env.register(LendingController {}, ());
+        let ctrl = LendingControllerClient::new(&env, &ctrl_id);
+        let wrapped = Address::generate(&env);
+        let pool = Address::generate(&env);
+        let vault = Address::generate(&env);
+        let oracle = Address::generate(&env);
+        let bridge_keys = soroban_sdk::vec![&env, BytesN::from_array(&env, &[1u8; 32])];
+
+        env.mock_auths(&[
+            MockAuth {
+                address: &admin,
+                invoke: &MockAuthInvoke {
+                    contract: &ctrl_id,
+                    fn_name: "initialize",
+                    args: (
+                        &admin,
+                        &bridge_keys,
+                        &1u32,
+                        &wrapped,
+                        &pool,
+                        &vault,
+                        &oracle,
+                    )
+                        .into_val(&env),
+                    sub_invokes: &[],
+                },
+            },
+            MockAuth {
+                address: &admin,
+                invoke: &MockAuthInvoke {
+                    contract: &ctrl_id,
+                    fn_name: "set_paused",
+                    args: (&true,).into_val(&env),
+                    sub_invokes: &[],
+                },
+            },
+        ]);
+        ctrl.initialize(
+            &admin,
+            &bridge_keys,
+            &1u32,
+            &wrapped,
+            &pool,
+            &vault,
+            &oracle,
+        );
+        ctrl.set_paused(&true);
+        // No panic — admin is authorized.
+    }
+
+    /// **C-5 (negative):** `set_paused` reverts for a non-admin caller.
+    #[test]
+    #[should_panic]
+    fn invariant_C5_set_paused_admin_only() {
+        use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let stranger = Address::generate(&env);
+        let ctrl_id = env.register(LendingController {}, ());
+        let ctrl = LendingControllerClient::new(&env, &ctrl_id);
+        let wrapped = Address::generate(&env);
+        let pool = Address::generate(&env);
+        let vault = Address::generate(&env);
+        let oracle = Address::generate(&env);
+        let bridge_keys = soroban_sdk::vec![&env, BytesN::from_array(&env, &[1u8; 32])];
+
+        // Admin initializes the controller.
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &ctrl_id,
+                fn_name: "initialize",
+                args: (
+                    &admin,
+                    &bridge_keys,
+                    &1u32,
+                    &wrapped,
+                    &pool,
+                    &vault,
+                    &oracle,
+                )
+                    .into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        ctrl.initialize(
+            &admin,
+            &bridge_keys,
+            &1u32,
+            &wrapped,
+            &pool,
+            &vault,
+            &oracle,
+        );
+
+        // Only `stranger` is authorized for set_paused; the contract requires
+        // an admin's auth → reverts.
+        env.mock_auths(&[MockAuth {
+            address: &stranger,
+            invoke: &MockAuthInvoke {
+                contract: &ctrl_id,
+                fn_name: "set_paused",
+                args: (&true,).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        ctrl.set_paused(&true);
     }
 
     /// **C-1:** `wrap` accepts a valid ed25519 attestation and mints tokens.

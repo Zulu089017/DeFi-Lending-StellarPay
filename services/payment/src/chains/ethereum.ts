@@ -9,6 +9,12 @@ const BRIDGE_ABI = [
   "event Burned(address indexed sender, address indexed token, uint256 amount, bytes32 indexed stellarDest, bytes32 salt, uint256 nonce)",
 ];
 
+// Both `Locked` and `Burned` mint on Stellar (canonical tokens can be
+// locked via transfer, or burned outright via `Bridge.burn`). Watch both
+// topics with an OR filter — previously only `Locked` was polled, so
+// burned source tokens were never wrapped. (Invariant X-2 expects
+// "Locked **or Burned**".)
+
 const POLLER_NAME = "ethereum";
 
 /** Minimum block confirmations before processing an event.
@@ -43,7 +49,12 @@ export class EthereumWatcher {
       address: this.bridge,
       fromBlock: from,
       toBlock: to,
-      topics: [this.iface.getEvent("Locked")!.topicHash],
+      topics: [
+        [
+          this.iface.getEvent("Locked")!.topicHash,
+          this.iface.getEvent("Burned")!.topicHash,
+        ],
+      ],
     });
 
     const events: SourceEvent[] = [];
