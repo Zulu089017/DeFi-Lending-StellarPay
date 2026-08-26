@@ -19,7 +19,7 @@ license = "Apache-2.0"
 repository = "https://github.com/Zulu089017/DeFi-Lending-Platform"
 
 [workspace.dependencies]
-soroban-sdk = "=27.0.5"
+soroban-sdk = "=27.0.6"
 
 # NOTE: soroban-token-sdk / stellar-asset-sdk are intentionally NOT declared.
 # They were previously pinned at 21.0.0 but are not used by any contract in
