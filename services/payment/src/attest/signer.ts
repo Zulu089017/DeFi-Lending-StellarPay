@@ -4,6 +4,7 @@ import { ethers } from "ethers";
 import { Address as ScAddress } from "@stellar/stellar-sdk";
 import { attesters, config } from "../config.js";
 import { logger } from "../utils/logger.js";
+import { recordAttestError } from "../utils/metrics.js";
 
 /**
  * Canonical payload format (must match `build_canonical_payload` in
@@ -31,7 +32,7 @@ export function payloadHash(args: {
   sourceToken: string;
   amount: bigint;
   stellarDest: string; // Strkey "G..."
-  salt: string;       // 32-byte hex with or without 0x
+  salt: string; // 32-byte hex with or without 0x
   nonce: bigint;
 }): Uint8Array {
   const bufs: Buffer[] = [];
@@ -42,9 +43,7 @@ export function payloadHash(args: {
   cid.writeUInt32LE(args.chainId >>> 0);
   bufs.push(cid);
   // 3. source_addr (32 raw bytes)
-  const saHex = args.sourceToken.startsWith("0x")
-    ? args.sourceToken.slice(2)
-    : args.sourceToken;
+  const saHex = args.sourceToken.startsWith("0x") ? args.sourceToken.slice(2) : args.sourceToken;
   let sa: Buffer;
   if (/^[0-9a-fA-F]{64}$/.test(saHex)) {
     sa = Buffer.from(saHex, "hex");
@@ -102,6 +101,7 @@ export async function collectSignatures(
       sigs.push({ sig: "0x" + Buffer.from(sig).toString("hex"), index: idx });
       if (sigs.length >= config.ATTESTER_THRESHOLD) break;
     } catch (err) {
+      recordAttestError();
       logger.error({ err }, "attester failed to sign");
     }
     idx += 1;
@@ -159,9 +159,9 @@ export const RELEASE_EIP712_TYPES = Object.freeze({
 
 /** Shape of the `Release` typed-data value. */
 export interface ReleaseTypedValue {
-  token: string;        // ERC-20 contract address
-  recipient: string;    // EOA or contract receiving the released tokens
-  amount: bigint;       // amount of `token` to release
+  token: string; // ERC-20 contract address
+  recipient: string; // EOA or contract receiving the released tokens
+  amount: bigint; // amount of `token` to release
   stellarTxHash: string; // 32-byte hash of the Stellar Unwrap event
   nonce: number | bigint; // replay-protection nonce (u256)
 }

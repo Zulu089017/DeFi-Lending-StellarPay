@@ -1,0 +1,66 @@
+# Alerting rules for StellarPay (mirrors docs/monitoring.md).
+groups:
+  - name: spg-bridge
+    rules:
+      - alert: BridgeMintsStalled
+        expr: increase(bridge_mints_total[5m]) == 0 and bridge_pending_queue_size > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mint queue is not draining"
+          description: "bridge_pending_queue_size is above zero but no mints completed in the last 5 minutes."
+
+      - alert: BridgeAttestationErrors
+        expr: increase(bridge_attest_errors_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Bridge attestation errors detected"
+          description: "Attester signing is failing; wraps will not complete."
+
+      - alert: BridgeQueueBacklog
+        expr: bridge_pending_queue_size > 25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Bridge mint queue backlog"
+          description: "Pending mint queue has been above 25 for 10 minutes."
+
+      - alert: RelayerSubmissionsStalled
+        expr: increase(relayer_submissions_total[5m]) == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Relayer has not submitted any transactions"
+          description: "relayer_submissions_total has not increased in 10 minutes."
+
+      - alert: RelayerFailureSpike
+        expr: increase(relayer_failures_total[5m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Relayer failure spike"
+          description: "More than 3 relayer submission failures in 5 minutes."
+
+      - alert: IndexerLag
+        expr: indexer_lag_seconds{chain="ethereum"} > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Indexer lagging behind chain tip"
+          description: "EVM indexer is more than 60 blocks behind for 5 minutes."
+
+      - alert: Api5xxRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API 5xx rate above 5%"
+          description: "The API is returning 5xx responses at an elevated rate."

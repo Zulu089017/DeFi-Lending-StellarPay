@@ -16,6 +16,10 @@ const Env = z.object({
   POLL_INTERVAL_MS: z.coerce.number().int().positive().default(2_000),
   MAX_RETRIES: z.coerce.number().int().positive().default(5),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  // Health/metrics HTTP server (Prometheus scrape target). Default 4300:
+  // the indexer owns 4200 in code and docker-compose.
+  PORT: z.coerce.number().int().positive().default(4300),
+  HOST: z.string().default("0.0.0.0"),
 });
 
 export const config = Env.parse(process.env);

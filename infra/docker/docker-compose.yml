@@ -73,5 +73,35 @@ services:
       - api
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.53.1
+    volumes:
+      - ../monitoring/prometheus:/etc/prometheus:ro
+    ports: ["9090:9090"]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    depends_on:
+      - api
+      - bridge
+      - relayer
+      - indexer
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      # Anonymous read-only access for the public dashboard.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: spg-admin
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000" # 3000 is taken by the frontend
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   pgdata:

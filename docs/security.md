@@ -144,9 +144,11 @@ Total SCF Wave 8 grant ask: **$200,000 USD**.
       loads them from a mounted secret (K8s Secret / Vault / Doppler). Full AWS
       KMS / HSM signing is a funded post-grant milestone; see
       `docs/deployment.md` § 8.
-- [x] Disaster recovery runbook tested — **Closed (2026-08-15)** — runbook
-      expanded with pause trigger conditions, a rollback procedure, and a
-      tabletop dry-run log; see `docs/disaster-recovery.md`.
+- [x] Disaster recovery runbook written + tabletop dry-runs — **Closed
+      (2026-08-15)** — runbook expanded with pause trigger conditions, a
+      rollback procedure, a tabletop dry-run log, and a live dry-run checklist;
+      see `docs/disaster-recovery.md`. **Live on-testnet dry-run is still
+      pending funded admin keys** (tracked in ROADMAP.md).
 - [x] Multi-attester signing implemented — **Closed (2026-08)** — see the Open
       TODOs entry below; on-chain `BridgeSet` (2-of-3) + off-chain threshold
       collection in `services/payment/src/attest/signer.ts`.

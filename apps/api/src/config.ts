@@ -10,6 +10,9 @@ const Env = z.object({
   HOST: z.string().default("0.0.0.0"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   CORS_ORIGINS: z.string().default("*"),
+  // When set, the rate limiter uses a shared Redis counter (across pod
+  // replicas) instead of the in-process fallback.
+  REDIS_URL: z.string().url().optional(),
 });
 
 export const config = Env.parse(process.env);

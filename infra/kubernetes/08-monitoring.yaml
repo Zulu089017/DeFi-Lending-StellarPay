@@ -1,0 +1,207 @@
+# Prometheus + Grafana for the spg namespace.
+# Apply with: kubectl apply -f infra/kubernetes/08-monitoring.yaml
+# Scrape configs live in infra/monitoring/prometheus/prometheus.yml; the
+# Grafana datasource + dashboard are provisioned from
+# infra/monitoring/grafana (mounted read-only below).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: prometheus-config, namespace: spg }
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    rule_files:
+      - /etc/prometheus/alerts.yml
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: ["localhost:9090"]
+      - job_name: spg-api
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["api:4000"]
+      - job_name: spg-bridge
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["bridge:4100"]
+      - job_name: spg-relayer
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["relayer:4300"]
+      - job_name: spg-indexer
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["indexer:4200"]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: prometheus-alerts, namespace: spg }
+data:
+  alerts.yml: |
+    groups:
+      - name: spg-bridge
+        rules:
+          - alert: BridgeMintsStalled
+            expr: increase(bridge_mints_total[5m]) == 0 and bridge_pending_queue_size > 0
+            for: 5m
+            labels: { severity: critical }
+            annotations:
+              summary: "Mint queue is not draining"
+          - alert: BridgeAttestationErrors
+            expr: increase(bridge_attest_errors_total[5m]) > 0
+            for: 2m
+            labels: { severity: critical }
+            annotations:
+              summary: "Bridge attestation errors detected"
+          - alert: RelayerFailureSpike
+            expr: increase(relayer_failures_total[5m]) > 3
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "Relayer failure spike"
+          - alert: IndexerLag
+            expr: indexer_lag_seconds{chain="ethereum"} > 60
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "Indexer lagging behind chain tip"
+          - alert: Api5xxRate
+            expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1) > 0.05
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "API 5xx rate above 5%"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: prometheus, namespace: spg }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: prometheus } }
+  template:
+    metadata: { labels: { app: prometheus } }
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.53.1
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.retention.time=15d"
+          ports: [{ containerPort: 9090 }]
+          volumeMounts:
+            - { name: config, mountPath: /etc/prometheus/prometheus.yml, subPath: prometheus.yml }
+            - { name: alerts, mountPath: /etc/prometheus/alerts.yml, subPath: alerts.yml }
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "1", memory: "1Gi" }
+      volumes:
+        - { name: config, configMap: { name: prometheus-config } }
+        - { name: alerts, configMap: { name: prometheus-alerts } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: prometheus, namespace: spg }
+spec:
+  selector: { app: prometheus }
+  ports: [{ port: 9090, targetPort: 9090 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: grafana, namespace: spg }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: grafana } }
+  template:
+    metadata: { labels: { app: grafana } }
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.2.0
+          env:
+            # Anonymous read-only access for the public dashboard; admin
+            # creds come from a `grafana-env` Secret in production.
+            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "true" }
+            - { name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: "Viewer" }
+          ports: [{ containerPort: 3000 }]
+          volumeMounts:
+            - { name: provisioning, mountPath: /etc/grafana/provisioning, readOnly: true }
+            - { name: dashboards, mountPath: /var/lib/grafana/dashboards, readOnly: true }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+      volumes:
+        - name: provisioning
+          configMap:
+            name: grafana-provisioning
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: grafana-provisioning, namespace: spg }
+data:
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: false
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+      - name: "StellarPay"
+        orgId: 1
+        folder: "StellarPay"
+        type: file
+        disableDeletion: true
+        updateIntervalSeconds: 30
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: grafana-dashboards, namespace: spg }
+data:
+  stellarpay.json: |
+    {
+      "title": "StellarPay Protocol",
+      "uid": "stellarpay-overview",
+      "editable": false,
+      "time": { "from": "now-6h", "to": "now" },
+      "timezone": "utc",
+      "panels": [
+        { "type": "row", "title": "Bridge", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+        { "type": "stat", "title": "Total mints (1h)", "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 }, "targets": [{ "expr": "increase(bridge_mints_total[1h])", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] } },
+        { "type": "stat", "title": "Attestation errors (5m)", "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 }, "targets": [{ "expr": "increase(bridge_attest_errors_total[5m])", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] } },
+        { "type": "gauge", "title": "Event lag (s)", "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 }, "targets": [{ "expr": "bridge_event_lag_seconds", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "s", "min": 0, "max": 300 }, "overrides": [] } },
+        { "type": "gauge", "title": "Pending mint queue", "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 }, "targets": [{ "expr": "bridge_pending_queue_size", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 50 }, "overrides": [] } },
+        { "type": "row", "title": "Relayer", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 } },
+        { "type": "timeseries", "title": "Submissions / failures", "gridPos": { "h": 6, "w": 12, "x": 0, "y": 6 }, "targets": [{ "expr": "sum(rate(relayer_submissions_total[5m])) by (chain)", "refId": "A" }, { "expr": "sum(rate(relayer_failures_total[5m])) by (chain)", "refId": "B" }], "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] } },
+        { "type": "stat", "title": "Pending queue", "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 }, "targets": [{ "expr": "relayer_pending_queue_size", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] } },
+        { "type": "row", "title": "Indexer", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 } },
+        { "type": "timeseries", "title": "Events ingested", "gridPos": { "h": 6, "w": 12, "x": 0, "y": 13 }, "targets": [{ "expr": "sum(rate(indexer_events_ingested_total[5m])) by (chain)", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] } },
+        { "type": "timeseries", "title": "EVM lag (blocks)", "gridPos": { "h": 6, "w": 12, "x": 12, "y": 13 }, "targets": [{ "expr": "indexer_lag_seconds{chain=\"ethereum\"}", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] } },
+        { "type": "row", "title": "API", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 19 } },
+        { "type": "timeseries", "title": "Request rate by status", "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 }, "targets": [{ "expr": "sum(rate(http_requests_total[5m])) by (status)", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] } },
+        { "type": "timeseries", "title": "p95 latency (ms)", "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 }, "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_ms_bucket[5m])) by (le))", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] } },
+        { "type": "stat", "title": "Rate-limit hits (5m)", "gridPos": { "h": 4, "w": 24, "x": 0, "y": 26 }, "targets": [{ "expr": "increase(http_ratelimit_hits_total[5m])", "refId": "A" }], "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] } }
+      ],
+      "schemaVersion": 39,
+      "templating": { "list": [] },
+      "timepicker": {},
+      "version": 1,
+      "weekStart": ""
+    }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: grafana, namespace: spg }
+spec:
+  selector: { app: grafana }
+  ports: [{ port: 80, targetPort: 3000 }]

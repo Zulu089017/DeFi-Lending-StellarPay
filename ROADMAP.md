@@ -41,9 +41,15 @@ ops/infra; see
 
 - [ ] Mainnet deployment (Stellar, Ethereum)
 - [ ] Chainlink oracle integration
-- [ ] Rate limiting on API
-- [ ] Prometheus + Grafana monitoring dashboards
-- [ ] Disaster recovery runbook tested
+- [x] Rate limiting on API — in-memory + Redis-backed (shared across replicas),
+      per-route quote limit, WebSocket caps, rate-limit headers; see
+      `docs/monitoring.md` (2026-08)
+- [x] Prometheus + Grafana monitoring dashboards — `/metrics` on every TS
+      service, scrape + alerting configs, provisioned dashboard,
+      docker-compose + k8s manifests; see `docs/monitoring.md` (2026-08)
+- [ ] Disaster recovery runbook tested — doc + tabletop dry-runs complete
+      (`docs/disaster-recovery.md`); **live on-testnet dry-run pending funded
+      admin keys**
 
 ## Q1 2027 — Ecosystem Growth (future grant)
 

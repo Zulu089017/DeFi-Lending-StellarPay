@@ -13,6 +13,13 @@ import { markMinted, prisma } from "../store/db.js";
 import { collectSignatures, payloadHash } from "../attest/signer.js";
 import type { StellarMintRequest, SourceChainId, SourceEvent } from "../types.js";
 import { logger } from "../utils/logger.js";
+import {
+  bridgeEventsIngestedTotal,
+  bridgeMintFailuresTotal,
+  bridgeMintsTotal,
+  bridgePendingMints,
+  recordQuorumFailure,
+} from "../utils/metrics.js";
 
 const CHAIN_IDS: Record<SourceChainId, number> = {
   ethereum: 1,
@@ -60,10 +67,11 @@ export class StellarMinter {
       },
       update: {},
     });
+    bridgeEventsIngestedTotal.inc();
   }
 
   /** Process pending mint requests. */
-  async processPending(): Promise<{ minted: number; failed: number }> {
+  async processPending(): Promise<{ minted: number; failed: number; pending: number }> {
     const pending = await prisma.mintRequest.findMany({
       where: { status: "pending" },
       orderBy: { createdAt: "asc" },
@@ -93,7 +101,9 @@ export class StellarMinter {
       }
     }
 
-    return { minted, failed };
+    const remaining = await prisma.mintRequest.count({ where: { status: "pending" } });
+    bridgePendingMints.set(remaining);
+    return { minted, failed, pending: remaining };
   }
 
   /** Submit the `wrap` call to the Soroban controller. */
@@ -103,10 +113,7 @@ export class StellarMinter {
     // so every source event produces a unique, deterministic nonce that fits
     // in a u64 and cannot be predicted by a same-source attacker.
     const nonceHash = ethers.keccak256(
-      ethers.solidityPacked(
-        ["bytes32", "uint256"],
-        [req.sourceTx, req.sourceLogIndex],
-      ),
+      ethers.solidityPacked(["bytes32", "uint256"], [req.sourceTx, req.sourceLogIndex]),
     );
     const nonce = BigInt(nonceHash) & 0xffffffffffffffffn;
     const payload = payloadHash({
@@ -119,6 +126,7 @@ export class StellarMinter {
     });
     const sigs = await collectSignatures(payload);
     if (sigs.length === 0) {
+      recordQuorumFailure();
       logger.error("no signatures collected");
       return false;
     }
@@ -126,6 +134,7 @@ export class StellarMinter {
     // Enforce the attester quorum off-chain as a safety net (the on-chain
     // contract also enforces threshold independently).
     if (sigs.length < config.ATTESTER_THRESHOLD) {
+      recordQuorumFailure();
       logger.error(
         { got: sigs.length, need: config.ATTESTER_THRESHOLD },
         "insufficient attester signatures (quorum not met)",
@@ -167,9 +176,7 @@ export class StellarMinter {
       sourceAddrBytes = Buffer.from(saHex, "hex");
     } else {
       sourceAddrBytes = Buffer.alloc(32);
-      Buffer.from(req.sourceAddress, "ascii")
-        .subarray(0, 32)
-        .copy(sourceAddrBytes);
+      Buffer.from(req.sourceAddress, "ascii").subarray(0, 32).copy(sourceAddrBytes);
     }
     const sourceAddrScval = xdr.ScVal.scvBytes(sourceAddrBytes);
 
@@ -199,9 +206,11 @@ export class StellarMinter {
     try {
       const result = await this.server.submitTransaction(tx);
       await markMinted(req.sourceTx, req.sourceLogIndex, result.hash);
+      bridgeMintsTotal.inc();
       logger.info({ tx: result.hash, sourceTx: req.sourceTx }, "minted wTKN on Stellar");
       return true;
     } catch (err) {
+      bridgeMintFailuresTotal.inc();
       logger.error({ err, sourceTx: req.sourceTx }, "submit failed");
       return false;
     }

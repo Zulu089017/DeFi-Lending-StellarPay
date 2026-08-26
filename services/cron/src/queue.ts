@@ -4,6 +4,12 @@ import { ethers } from "ethers";
 import { Horizon, Keypair, TransactionBuilder, Operation, Networks } from "@stellar/stellar-sdk";
 import { config } from "./config.js";
 import { logger } from "./utils/logger.js";
+import {
+  relayerAttemptsTotal,
+  relayerFailuresTotal,
+  relayerPendingQueueSize,
+  relayerSubmissionsTotal,
+} from "./utils/metrics.js";
 
 export const prisma = new PrismaClient();
 
@@ -11,8 +17,8 @@ export const prisma = new PrismaClient();
 export type RelayerJob = {
   id: string;
   chain: "stellar" | "ethereum" | "polygon";
-  signedTxXdr?: string;     // base64 XDR for Stellar
-  rawTx?: string;           // hex RLP for EVM
+  signedTxXdr?: string; // base64 XDR for Stellar
+  rawTx?: string; // hex RLP for EVM
   attempts: number;
   status: "pending" | "submitted" | "failed";
 };
@@ -34,7 +40,9 @@ export class Relayer {
       take: 25,
       orderBy: { createdAt: "asc" },
     });
+    relayerPendingQueueSize.set(jobs.length);
     for (const job of jobs) {
+      relayerAttemptsTotal.inc({ chain: job.chain });
       try {
         if (job.chain === "stellar") {
           await this.submitStellar(job);
@@ -44,6 +52,7 @@ export class Relayer {
           await this.submitEvm(job, this.polyWallet, "polygon");
         }
       } catch (err) {
+        relayerFailuresTotal.inc({ chain: job.chain });
         logger.error({ err, jobId: job.id }, "relayer submission failed");
         await prisma.relayerJob.update({
           where: { id: job.id },
@@ -60,8 +69,12 @@ export class Relayer {
   private async submitStellar(job: any) {
     const server = new Horizon.Server(config.STELLAR_RPC);
     const envelope = job.signedTxXdr;
-    const tx = new (await import("@stellar/stellar-sdk")).Transaction(envelope, config.STELLAR_NETWORK_PASSPHRASE);
+    const tx = new (await import("@stellar/stellar-sdk")).Transaction(
+      envelope,
+      config.STELLAR_NETWORK_PASSPHRASE,
+    );
     const result = await server.submitTransaction(tx);
+    relayerSubmissionsTotal.inc({ chain: "stellar" });
     await prisma.relayerJob.update({
       where: { id: job.id },
       data: { status: "submitted", submittedHash: result.hash, submittedAt: new Date() },
@@ -74,6 +87,7 @@ export class Relayer {
     if (!raw) throw new Error(`EVM job ${job.id} missing rawTx`);
     const tx = await wallet.sendTransaction({ data: raw });
     const receipt = await tx.wait();
+    relayerSubmissionsTotal.inc({ chain });
     await prisma.relayerJob.update({
       where: { id: job.id },
       data: { status: "submitted", submittedHash: tx.hash, submittedAt: new Date() },

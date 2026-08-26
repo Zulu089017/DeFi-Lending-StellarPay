@@ -1,0 +1,43 @@
+# Prometheus scrape configuration for StellarPay.
+#
+# Local run:   docker compose -f infra/docker/docker-compose.yml up prometheus grafana
+# Kubernetes:  kubectl apply -f infra/kubernetes/08-monitoring.yaml
+#
+# The service names below resolve inside the docker-compose network and the
+# spg Kubernetes namespace respectively. Each service exposes /metrics:
+#   api      :4000  http_requests_total, http_request_duration_ms, http_ratelimit_hits_total
+#   bridge   :4100  bridge_mints_total, bridge_attest_errors_total, bridge_event_lag_seconds, bridge_pending_queue_size
+#   relayer  :4300  relayer_submissions_total, relayer_failures_total, relayer_pending_queue_size
+#   indexer  :4200  indexer_events_ingested_total, indexer_lag_seconds
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: spg-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:4000"]
+
+  - job_name: spg-bridge
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["bridge:4100"]
+
+  - job_name: spg-relayer
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["relayer:4300"]
+
+  - job_name: spg-indexer
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["indexer:4200"]

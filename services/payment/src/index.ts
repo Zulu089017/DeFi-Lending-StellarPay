@@ -8,18 +8,30 @@ import { StellarWatcher } from "./chains/stellar.js";
 import { StellarMinter } from "./mint/stellarMinter.js";
 import { stellarPayment } from "./stellarPayment.js";
 import { prisma } from "./store/db.js";
+import {
+  bridgeEventLagSeconds,
+  bridgePendingMints,
+  metricsBody,
+  metricsContentType,
+} from "./utils/metrics.js";
 
 let running = true;
 let intervalId: ReturnType<typeof setInterval> | null = null;
+let lastEventAt = Date.now();
 
 /** Minimal HTTP server so the k8s liveness/readiness probes on :4100/health
- *  can succeed. The bridge itself is a poller; this endpoint is the only
- *  HTTP surface it exposes. */
+ *  can succeed, plus the Prometheus scrape endpoint on :4100/metrics.
+ *  The bridge itself is a poller; this is the only HTTP surface it exposes. */
 function startHealthServer() {
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     if (req.url === "/health") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, service: "spg-bridge", uptime: process.uptime() }));
+      return;
+    }
+    if (req.url === "/metrics") {
+      res.writeHead(200, { "content-type": metricsContentType() });
+      res.end(await metricsBody());
       return;
     }
     res.writeHead(404);
@@ -51,11 +63,14 @@ async function main() {
         sol.pollOnce(),
       ]);
       const all = [...ethEvs, ...polyEvs, ...solEvs];
+      if (all.length > 0) lastEventAt = Date.now();
       for (const ev of all) {
         await minter.enqueue(ev, ev.stellarDest);
       }
       await stellarW.pollOnce();
       const res = await minter.processPending();
+      bridgeEventLagSeconds.set((Date.now() - lastEventAt) / 1000);
+      bridgePendingMints.set(res.pending);
       if (res.minted > 0 || res.failed > 0) {
         logger.info(res, "mint cycle complete");
       }

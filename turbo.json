@@ -22,7 +22,7 @@
       "cache": false
     },
     "test": {
-      "dependsOn": ["build"],
+      "dependsOn": ["build", "prisma:generate"],
       "outputs": ["coverage/**"],
       "cache": true,
       "inputs": ["src/**", "tests/**", "test/**", "**/*.test.*"]

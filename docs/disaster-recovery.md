@@ -139,8 +139,63 @@ For a bad config/image release, or an on-chain change that must be reverted:
 | 2026-08-15 | Tabletop | Oracle staleness (Scenario 5)                          | ✅     | Verified `Oracle::get_price` heartbeat (300s) + `min_publishers=2` panic path and admin `set_price` recovery.                                                  |
 
 > **Status (2026-08-15):** tabletop only. A live on-testnet dry-run (with funded
-> admin keys) is the next step; record timestamp + what worked / what didn't
-> here.
+> admin keys) is the next step — see the **Live dry-run checklist** section
+> above. Record timestamp + what worked / what didn't here.
+
+## Live dry-run checklist (pending funded admin keys)
+
+Status: **tabletop only (2026-08-15)**. The scenarios below were exercised on
+paper; a live on-testnet dry-run with funded admin keys is the remaining step to
+close the ROADMAP checkbox. Each item references the concrete call / command to
+run.
+
+> ⚠️ All steps below target **Stellar Testnet / Sepolia only**. Never point
+> these at a network with real value.
+
+### Pre-flight
+
+- [ ] Confirm monitoring is live first — every alert in
+      `infra/monitoring/prometheus/alerts.yml` should fire/clear in Grafana
+      (`http://localhost:3001` locally). The DR triggers below are the same
+      conditions the alerts watch.
+- [ ] Record baseline: `bridge_pending_queue_size`, `bridge_mints_total`,
+      `relayer_submissions_total` in Prometheus.
+- [ ] Confirm admin multisig keys can sign `set_paused` on the controller and
+      `setPaused` on the EVM Bridge (testnet deployments).
+
+### Scenario 3 live — attester key compromise (rotate in < 15 min)
+
+1. `curl -s localhost:4100/metrics | grep bridge_mints_total` — note baseline.
+2. Pause the Stellar controller (admin multisig):
+   `lending_controller.set_paused(true)`.
+3. Rotate the EVM attester set: `Bridge.setAttesters(newKeys, threshold)`
+   (multisig).
+4. Rotate the secret: replace the value in the `payment-env` secret and restart
+   the bridge deployment (`kubectl rollout restart deploy/bridge`).
+5. Verify no new mints: `bridge_mints_total` unchanged during the window.
+6. Unpause (`set_paused(false)`) and confirm the next wrap succeeds.
+7. Record timestamp + result in the tabletop log below (new row).
+
+### Scenario 5 live — oracle staleness
+
+1. Let the oracle heartbeat lapse (or remove a publisher) so `get_price` reverts
+   as stale; confirm `lending_pool` borrow reverts.
+2. Recover: restart the oracle publisher pod / push `oracle.set_price` via
+   admin.
+3. Confirm borrow works again; record in the log.
+
+### Scenario 2 live — cursor rollback
+
+1. `UPDATE cursors SET block = block - 12 WHERE chain = 'ethereum';`
+2. Restart the indexer and confirm events replay (watch
+   `indexer_events_ingested_total` increase).
+3. Record in the log.
+
+### Sign-off
+
+- [ ] All scenarios recorded in the dry-run log below with timestamps, who ran
+      them, and what broke.
+- [ ] ROADMAP.md checkbox ticked and security.md pre-audit line updated.
 
 ## Emergency contacts
 

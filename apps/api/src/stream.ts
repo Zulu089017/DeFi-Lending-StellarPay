@@ -1,6 +1,19 @@
 import type { FastifyInstance } from "fastify";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, type WebSocket } from "ws";
 import { prisma } from "./db.js";
+import { wsConnections, wsConnectionsRejectedTotal } from "./metrics.js";
+
+/** Max concurrent WebSocket connections per client IP. */
+const MAX_CONNECTIONS_PER_IP = 10;
+
+/** Max inbound messages per connection per 10s window (defensive: the
+ *  stream currently only broadcasts, but cap client chatter regardless). */
+const MAX_MESSAGES_PER_WINDOW = 30;
+const MESSAGE_WINDOW_MS = 10_000;
+
+function clientIp(req: any): string {
+  return req.socket?.remoteAddress ?? req.headers?.["x-forwarded-for"] ?? "unknown";
+}
 
 /** WebSocket: pushes new indexer rows to any connected client as soon as
  *  the indexer commits them. We use Postgres LISTEN/NOTIFY for low-latency
@@ -8,9 +21,57 @@ import { prisma } from "./db.js";
 export function attachWebsocket(app: FastifyInstance) {
   const wss = new WebSocketServer({ server: app.server, path: "/v1/stream" });
 
-  wss.on("connection", (ws) => {
+  // Per-IP connection cap: track live sockets, close the newest when a
+  // client exceeds the cap (prevents one client from exhausting the
+  // connection pool and hogging the broadcast fan-out).
+  const connsPerIp = new Map<string, Set<WebSocket>>();
+  const messageCounts = new WeakMap<WebSocket, { count: number; windowStart: number }>();
+
+  wss.on("connection", (ws, req) => {
+    const ip = String(clientIp(req));
+    let conns = connsPerIp.get(ip);
+    if (!conns) {
+      conns = new Set();
+      connsPerIp.set(ip, conns);
+    }
+    if (conns.size >= MAX_CONNECTIONS_PER_IP) {
+      wsConnectionsRejectedTotal.inc();
+      ws.close(1013, "too many connections from this IP"); // 1013 = try again later
+      return;
+    }
+    conns.add(ws);
+    wsConnections.set(countLive(wss));
+
+    ws.on("close", () => {
+      conns.delete(ws);
+      wsConnections.set(countLive(wss));
+    });
+
+    // Defensive inbound message cap.
+    ws.on("message", () => {
+      const now = Date.now();
+      const state = messageCounts.get(ws) ?? { count: 0, windowStart: now };
+      if (now - state.windowStart > MESSAGE_WINDOW_MS) {
+        state.count = 0;
+        state.windowStart = now;
+      }
+      state.count++;
+      messageCounts.set(ws, state);
+      if (state.count > MAX_MESSAGES_PER_WINDOW) {
+        ws.close(1008, "message rate limit exceeded"); // 1008 = policy violation
+      }
+    });
+
     ws.send(JSON.stringify({ type: "hello", message: "spg-stream" }));
   });
+
+  const countLive = (server: WebSocketServer): number => {
+    let n = 0;
+    server.clients.forEach((c) => {
+      if (c.readyState === 1) n++;
+    });
+    return n;
+  };
 
   const seen = {
     wrap: new Set<string>(),

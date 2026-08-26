@@ -4,6 +4,13 @@ import { Horizon } from "@stellar/stellar-sdk";
 import { ethers } from "ethers";
 import { PrismaClient } from "@prisma/client";
 import pino from "pino";
+import {
+  indexerErrorsTotal,
+  indexerEventsIngested,
+  indexerLagSeconds,
+  metricsBody,
+  metricsContentType,
+} from "./utils/metrics.js";
 
 const logger = pino({ transport: { target: "pino-pretty", options: { colorize: true } } });
 const prisma = new PrismaClient();
@@ -29,14 +36,8 @@ async function streamHorizon() {
   setInterval(async () => {
     if (!running) return;
     try {
-      const builder = server
-        .operations()
-        .forAccount(CONTROLLER)
-        .order("asc")
-        .limit(50);
-      const page = cursor
-        ? await builder.cursor(cursor).call()
-        : await builder.call();
+      const builder = server.operations().forAccount(CONTROLLER).order("asc").limit(50);
+      const page = cursor ? await builder.cursor(cursor).call() : await builder.call();
       for (const op of page.records) {
         await indexStellarOp(op);
       }
@@ -49,6 +50,7 @@ async function streamHorizon() {
         });
       }
     } catch (err) {
+      indexerErrorsTotal.inc({ chain: "stellar" });
       logger.error({ err }, "horizon poll failed");
     }
   }, POLL_MS);
@@ -75,6 +77,7 @@ async function indexStellarOp(op: any) {
       },
       update: {},
     });
+    indexerEventsIngested.inc({ chain: "stellar" });
   }
 }
 
@@ -102,9 +105,13 @@ async function streamEvm() {
         fromBlock: fromBlock + 1,
         toBlock: head,
       });
+      indexerLagSeconds.set({ chain: "ethereum" }, Math.max(0, head - fromBlock));
       for (const log of logs) {
         const parsed = iface.parseLog(log);
-        if (!parsed) continue;
+        if (!parsed) {
+          indexerErrorsTotal.inc({ chain: "ethereum" });
+          continue;
+        }
         const eventName = parsed.name as "Locked" | "Burned" | "Released";
         const args = parsed.args;
         await prisma.bridgeEvent.upsert({
@@ -128,6 +135,7 @@ async function streamEvm() {
           },
           update: {},
         });
+        indexerEventsIngested.inc({ chain: "ethereum" });
       }
       fromBlock = head;
       await prisma.cursor.upsert({
@@ -136,6 +144,7 @@ async function streamEvm() {
         update: { block: BigInt(head) },
       });
     } catch (err) {
+      indexerErrorsTotal.inc({ chain: "ethereum" });
       logger.error({ err }, "evm poll failed");
     }
   }, POLL_MS);
@@ -146,6 +155,11 @@ const app = express();
 app.use(express.json());
 
 app.get("/health", (_, res) => res.json({ ok: true }));
+
+app.get("/metrics", async (_req, res) => {
+  res.setHeader("content-type", metricsContentType());
+  res.send(await metricsBody());
+});
 
 app.get("/events/wrap", async (_, res) => {
   const events = await prisma.wrapEvent.findMany({ take: 50, orderBy: { createdAt: "desc" } });
