@@ -100,6 +100,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   See `api/README.md` → “Testing”.
 
 ### Changed
+- `apps/web`: bump `next` 14.2.4 → 14.2.25 (patches the middleware auth
+  bypass CVE-2025-29927; the app ships no middleware so it was not
+  exploitable).
 - `turbo.json`: the `test` task now depends on `prisma:generate`, so
   `pnpm test` works on a fresh checkout (apps/api tests previously failed
   with "@prisma/client did not initialize yet").

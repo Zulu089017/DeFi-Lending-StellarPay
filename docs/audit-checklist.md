@@ -51,7 +51,14 @@
 - [x] `cargo clippy` with deny lints
 - [x] Slither on EVM contracts
 - [ ] `cargo audit` for known Rust vulnerabilities
-- [ ] `npm audit` for known TS vulnerabilities
+- [ ] `npm audit` for known TS vulnerabilities — **status (2026-08-26):** the
+      production-relevant critical (`next` 14.2.4 middleware auth bypass,
+      CVE-2025-29927) is patched by the 14.2.25 bump; `apps/web` uses no
+      middleware so it was not exploitable. Remaining: 2 criticals (vitest
+      UI-server vector, dev-only — not used in CI or local runs) and the
+      high/moderate tail are dev/test chains (vite/vitest/postcss/nanoid) that
+      need breaking major upgrades, deferred as tracked in `ci.yml`
+      (`pnpm audit … || true`).
 - [ ] Formal verification (Certora / Move Prover style)
 
 ### Key management

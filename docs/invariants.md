@@ -49,22 +49,18 @@
 
 ## 4. Lending Pool (`lending_pool`)
 
-| # | Invariant | Type | | ---- |
----------------------------------------------------------------------------------
-
-| -------------------------------------------- | --- | | L-1 | `Σ B <= Σ D` for
-every market (protocol is fully collateralised) | Solvency | | L-2 |
-`borrow_index(asset)` is monotone non-decreasing | Monotonicity | | L-3 |
-`debt_of(u, a) = principal(u, a) * borrow_index(a) / snap.index(u, a)` |
-Algebraic | | L-4 | First supplier receives shares `1:1`; later suppliers
-receive proportional shares | Share math | | L-5 | `withdraw` rejects if the
-user has insufficient shares | Input validation | | L-6 | `repay` does not
-over-pay a user's outstanding debt | Bounded repayment | | L-7 |
-`total_deposit_shares(asset) >= 0` always | Storage safety | | L-8 |
-`accrue_interest` does not change `total_borrow` | Interest is index-based, not
-principal-based | | L-9 | `borrow_apy_bps` is continuous across the kink (within
-rounding) | Rate model | | L-10 | `borrow` must verify `HF(u) >= 1` after the
-borrow | Risk control | ✅ |
+| #    | Invariant                                                                         | Type                                         | Status |
+| ---- | --------------------------------------------------------------------------------- | -------------------------------------------- | ------ |
+| L-1  | `Σ B <= Σ D` for every market (protocol is fully collateralised)                  | Solvency                                     | ✅     |
+| L-2  | `borrow_index(asset)` is monotone non-decreasing                                  | Monotonicity                                 | ✅     |
+| L-3  | `debt_of(u, a) = principal(u, a) * borrow_index(a) / snap.index(u, a)`            | Algebraic                                    | ✅     |
+| L-4  | First supplier receives shares `1:1`; later suppliers receive proportional shares | Share math                                   | ✅     |
+| L-5  | `withdraw` rejects if the user has insufficient shares                            | Input validation                             | ✅     |
+| L-6  | `repay` does not over-pay a user's outstanding debt                               | Bounded repayment                            | ✅     |
+| L-7  | `total_deposit_shares(asset) >= 0` always                                         | Storage safety                               | ✅     |
+| L-8  | `accrue_interest` does not change `total_borrow`                                  | Interest is index-based, not principal-based | ✅     |
+| L-9  | `borrow_apy_bps` is continuous across the kink (within rounding)                  | Rate model                                   | ✅     |
+| L-10 | `borrow` must verify `HF(u) >= 1` after the borrow                                | Risk control                                 | ✅     |
 
 > ⚠️ The scaffold did **not** enforce L-10 in the initial version. **Closed
 > (2026-08).** L-10 through L-16 are now fully implemented and tested; see
@@ -84,21 +80,14 @@ borrow | Risk control | ✅ |
 
 ## 5. Liquidation Engine (`liquidation`)
 
-| # | Invariant | Type | | --- |
-----------------------------------------------------------------------------------------------------------------------------------------
-
-| ------------------------- | --- | | Q-1 | `liquidate(borrower, ...)` reverts
-if `HF(borrower) >= 1` | Only-liquidate-underwater | ✅ | | Q-2 | `liquidate`
-reverts if
-`repay_amount > close_factor_bps / 10_000 * debt_of(borrower, debt_asset)` |
-Close-factor | ✅ | | Q-3 | `liquidator_share = repay + bonus - fee`, where
-`fee = fee_bps * bonus / 10_000` | Algebraic | | Q-4 | The protocol never
-receives more than `fee_bps * bonus / 10_000` of seized collateral | Fee bounded
-| | Q-5 | **(Closed 2026-08)** The on-chain engine cross-calls
-`lending_pool.repay_on_behalf` and `collateral_vault.seize` in a single
-transaction | Atomicity | | Q-6 | **(Closed 2026-08)**
-`lending_pool.repay_on_behalf` succeeds before `collateral_vault.seize` runs |
-Ordering |
+| #   | Invariant                                                                                                                                | Type                      | Status |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------ |
+| Q-1 | `liquidate(borrower, ...)` reverts if `HF(borrower) >= 1`                                                                                | Only-liquidate-underwater | ✅     |
+| Q-2 | `liquidate` reverts if `repay_amount > close_factor_bps / 10_000 * debt_of(borrower, debt_asset)`                                        | Close-factor              | ✅     |
+| Q-3 | `liquidator_share = repay + bonus - fee`, where `fee = fee_bps * bonus / 10_000`                                                         | Algebraic                 | ✅     |
+| Q-4 | The protocol never receives more than `fee_bps * bonus / 10_000` of seized collateral                                                    | Fee bounded               | ✅     |
+| Q-5 | **(Closed 2026-08)** The on-chain engine cross-calls `lending_pool.repay_on_behalf` and `collateral_vault.seize` in a single transaction | Atomicity                 | ✅     |
+| Q-6 | **(Closed 2026-08)** `lending_pool.repay_on_behalf` succeeds before `collateral_vault.seize` runs                                        | Ordering                  | ✅     |
 
 ## 6. Lending Controller (`lending_controller`)
 
@@ -122,13 +111,12 @@ Ordering |
 > `services/payment/tests/signer.test.ts` (`CANONICAL_DIGEST`), and the Rust
 > side now has the matching `invariant_C6_payload_digest_matches_ts` asserting
 > the same 64-hex digest (`fd426f52…`). C-3 (mint rate limit) and C-5
-> (`set_paused`/`set_bridge` admin-only) also have dedicated tests (2026-08). |
-> C-7 | **(Closed 2026-08)** `wrap` cross-calls `wrapped_asset.mint(to, amount)`
-> and `unwrap` calls `wrapped_asset.burn(user, amount)` | Cross-contract
-> integration | | C-8 | **(Closed 2026-08)** `supply_collateral` calls
-> `lending_pool.supply` + `collateral_vault.deposit`; `borrow` calls
-> `oracle.value_of` (LTV enforcement) + `vault.deposit` + `pool.borrow_raw` |
-> Cross-contract integration |
+> (`set_paused`/`set_bridge` admin-only) also have dedicated tests (2026-08).
+
+| #   | Invariant                                                                                                                                                                                   | Type                       | Status |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------ |
+| C-7 | **(Closed 2026-08)** `wrap` cross-calls `wrapped_asset.mint(to, amount)` and `unwrap` calls `wrapped_asset.burn(user, amount)`                                                              | Cross-contract integration | ✅     |
+| C-8 | **(Closed 2026-08)** `supply_collateral` calls `lending_pool.supply` + `collateral_vault.deposit`; `borrow` calls `oracle.value_of` (LTV enforcement) + `vault.deposit` + `pool.borrow_raw` | Cross-contract integration | ✅     |
 
 ## 7. Bridge (`Bridge.sol`)
 
