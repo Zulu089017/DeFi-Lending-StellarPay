@@ -21,7 +21,7 @@ What it does:
   multi-attester bridge
 • Supply, borrow, and auto-liquidate on Soroban with sub-cent fees
 • 7 Soroban contracts deployed to testnet (verified on Stellar Expert)
-• 103 tests passing (including 26 invariant tests)
+• 113 tests passing (including 42 invariant tests)
 • Next.js dashboard with real-time bridge, lend, and liquidation pages
 
 Stack: Rust (Soroban SDK 27), Solidity (Bridge.sol), TypeScript (bridge
@@ -51,7 +51,7 @@ sub-cent fees.
 - 7 Soroban contracts deployed to testnet (verified)
 - EVM Bridge.sol with EIP-712 typed signatures
 - 2-of-3 multi-attester bridge signing (threshold enforced on-chain)
-- 103 passing tests (clippy clean, CI green)
+- 113 passing tests (clippy clean, CI green)
 - Next.js dashboard live at app.spg.xyz
 - TypeScript SDK published
 - Full documentation: architecture, invariants, threat model, deployment guide
@@ -87,7 +87,7 @@ Key Soroban-specific details:
   oracle.value_of + vault.deposit + pool.borrow_raw
 • Ed25519 bridge attestation verification with multi-attester threshold
   (BridgeSet with Vec<BytesN<32>> + sorted-index verification)
-• 26 invariant tests for lending pool + liquidation (all pass on SDK 27.0.4)
+• 42 invariant tests for lending pool + liquidation (all pass on SDK 27.0.4)
 • Deterministic contract IDs with resumable deploy (stellar-sdk v16, no CLI)
 
 If you've built on Soroban or have opinions on the contract architecture,
@@ -106,7 +106,7 @@ Built something that bridges Ethereum and Stellar for lending:
    assets on Stellar, supply/borrow/liquidate with 5s finality
 🔒 Bridge security: EIP-712 typed signatures on EVM side, ed25519
    attestations on Soroban side, 2-of-3 multi-attester threshold
-🧪 Testnet deployed, 103 tests, CI green
+🧪 Testnet deployed, 113 tests, CI green
 
 Repo: https://github.com/Zulu089017/DeFi-Lending-Platform
 Demo: https://app.spg.xyz
@@ -136,7 +136,7 @@ implementation!
 3/ Fully automated liquidation engine — anyone can liquidate underwater
    positions, 5% bonus for liquidators
 
-4/ All 7 Soroban contracts deployed to testnet. 103 tests passing.
+4/ All 7 Soroban contracts deployed to testnet. 113 tests passing.
    Dashboard live.
 
 5/ Seeking @StellarOrg SCF Wave 8 funding for a Trail of Bits audit and

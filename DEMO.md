@@ -70,7 +70,7 @@
 
 - **Show:** Terminal running `cargo test --workspace` (or a screenshot of
   passing tests)
-- **Say:** "The protocol has 103 passing tests, including 26 invariant tests
+- **Say:** "The protocol has 113 passing tests, including 42 invariant tests
   covering lending pool solvency, liquidation bonus math, oracle median
   aggregation, and cross-contract integration. The CI pipeline runs clippy with
   deny-warnings, cargo fmt, and the full test suite on every push."

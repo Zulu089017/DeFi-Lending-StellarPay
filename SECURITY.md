@@ -1,48 +1,41 @@
 # Security Policy
 
-> **StellarPay is currently in a scaffold stage and has not been audited.** The
-> contracts and off-chain services in this monorepo are reference
-> implementations intended for testnet usage. Do not deposit real assets.
+> **StellarPay is testnet-stage and unaudited. Do not deposit real assets.**
+
+## Audit plan
+
+Target: **Q1 2027** — **Trail of Bits** (primary) / **Halborn** (backup), funded
+by the SCF Wave 8 grant ($140k of the $200k ask). Scope: 7 Soroban contracts
+(~2,500 LOC Rust), `Bridge.sol` (~400 LOC Solidity), bridge middleware (~800 LOC
+TS), relayer (~200 LOC TS). Outreach 2026-08-15; quote/LOI expected by
+**2026-09-15** (replace with signed quote). Pre-audit checklist:
+[`docs/audit-checklist.md`](docs/audit-checklist.md).
 
 ## Reporting a vulnerability
 
-Please **do not** file public issues for security bugs.
+Do **not** file public issues. Email **security@spg.xyz** with: description and
+impact; PoC or steps; affected subproject and version; name for credit
+(optional). Acknowledged within **3 business days**; critical fix within **30
+days**; **90-day coordinated disclosure** (extensions only by mutual agreement).
 
-Email **security@spg.xyz** with:
+**Safe harbor:** good-faith research against testnet deployments is authorized —
+no legal action. No mainnet exists; don't exfiltrate/destroy data or disrupt
+users.
 
-- A clear description of the issue and impact (e.g. loss of funds, DoS, key
-  compromise).
-- A reproducible proof-of-concept, test case, or set of steps.
-- The affected subproject and version (`contracts`, `services/payment`,
-  `services/cron`, `services/indexer`, `apps/api`, `packages/sdk`, `apps/web`).
-- Your name / handle if you'd like to be credited in the disclosure timeline.
+## Bug bounty (post-audit)
 
-We aim to acknowledge within **3 business days** and to issue a fix or
-mitigation within **30 days** for critical-severity issues.
+Launch within 60 days of the audit report. **In scope:** the 7 Soroban contracts
+and `Bridge.sol` (EVM testnets). **Out of scope until mainnet:** off-chain
+services, SDK, dashboards. Paid in wTKN.
 
-## Supported versions
+| Severity | Example                                | Payout (USD)          |
+| -------- | -------------------------------------- | --------------------- |
+| Critical | Unauthorized mint / loss of user funds | $[CRITICAL — fill in] |
+| High     | Insolvency, health-factor bypass       | $[HIGH — fill in]     |
+| Medium   | Griefing / minor corruption            | $[MEDIUM — fill in]   |
+| Low      | Informational only                     | $[LOW — fill in]      | ## Known risks (from `docs/invariants.md`) |
 
-| Subproject                                                                                      | Audited      | Maintained    |
-| ----------------------------------------------------------------------------------------------- | ------------ | ------------- |
-| `contracts/` (Soroban)                                                                          | ❌ (planned) | ✅ latest tag |
-| `contracts/` (EVM)                                                                              | ❌ (planned) | ✅ latest tag |
-| `services/payment`, `services/cron`, `services/indexer`, `apps/api`, `packages/sdk`, `apps/web` | ❌ (planned) | ✅ latest tag |
-
-Only the latest tagged release of each subproject receives security fixes.
-
-## Threat model, mitigations, and known TODOs
-
-See [`docs/security.md`](docs/security.md) for the full threat model and the
-list of known placeholders that must be closed before any non-trivial TVL is
-deployed. See [`docs/invariants.md`](docs/invariants.md) for the protocol
-invariants an audit will check.
-
-## Bug bounty
-
-A bug bounty program is planned for after the first independent audit. Scope,
-rules, and reward tiers will be published at `spg.xyz/security`.
-
-## Disclosure timeline
-
-We follow a **coordinated disclosure** model: a 90-day window from report to
-public disclosure, with extensions only by mutual agreement.
+All contract invariants (L, Q, C, O, V, W, B) have executing tests. **No
+automated test yet:** X-1…X-3 (cross-chain backing/causality — unwrap →
+`Bridge.release` not wired end-to-end) and X-4 (view consistency). Theseare
+audit priorities.

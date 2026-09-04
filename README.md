@@ -300,7 +300,7 @@ This repository is a **testnet-stage protocol**. The smart contracts have not
 been audited. All 7 Soroban contracts are deployed to Stellar testnet (see
 [DEPLOYMENTS.md](DEPLOYMENTS.md)) and the Next.js dashboard is live at the demo
 link above. Health factor checks, collateral validation, and liquidation
-invariants are implemented and tested (103 tests pass, 26 invariant tests). **Do
+invariants are implemented and tested (113 tests pass, 42 invariant tests). **Do
 not deposit real assets.** A formal audit, bug-bounty program, and coordinated
 disclosure policy are tracked in [`SECURITY.md`](SECURITY.md) and
 [`docs/security.md`](docs/security.md). The SCF Wave 8 grant budget and fund
