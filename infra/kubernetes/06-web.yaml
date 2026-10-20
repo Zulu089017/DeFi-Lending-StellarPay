@@ -11,6 +11,8 @@ spec:
         - name: web
           image: spg/web:latest
           env:
+            # PLACEHOLDER: no hosted API exists yet (api.spg.xyz has no DNS
+            # record). Point this at the real API origin once it is deployed.
             - name: NEXT_PUBLIC_API_URL
               value: https://api.spg.xyz
             - name: NEXT_PUBLIC_STELLAR_RPC

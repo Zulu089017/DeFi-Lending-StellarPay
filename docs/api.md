@@ -2,9 +2,10 @@
 
 The StellarPay API is a Fastify-based REST + WebSocket service.
 
-- **Base URL:** `https://api.spg.xyz` (production) / `http://localhost:4000`
-  (local)
-- **WebSocket:** `wss://api.spg.xyz/v1/stream`
+- **Base URL:** `http://localhost:4000` (local). **No hosted API is deployed
+  yet** — `api.spg.xyz` has no DNS record, so the production URL is not
+  advertised (see [`DEPLOYMENTS.md`](../DEPLOYMENTS.md)).
+- **WebSocket:** `ws://localhost:4000/v1/stream`
 - **Content type:** `application/json`
 - **CORS:** open in dev, restricted in prod
 
@@ -74,7 +75,8 @@ and `?asset=...`.
 
 ## WebSocket
 
-Connect to `wss://api.spg.xyz/v1/stream`. The server pushes JSON frames:
+Connect to `ws://localhost:4000/v1/stream` (or the deployed API URL). The server
+pushes JSON frames:
 
 ```json
 { "type": "wrap",    "data": { "id": "...", "txHash": "...", "amount": "1000000", ... } }

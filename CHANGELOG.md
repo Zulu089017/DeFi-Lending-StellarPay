@@ -81,7 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (V-1/V-2/V-3/V-5, C-2/C-4, L-1..L-6/L-9, O-1/O-2/O-3, Q-3/Q-4) and
   `test_TODO_*` stubs (C-1, L-10, Q-1/Q-2) for the documented security
   gaps. The suite executes and passes on the migrated toolchain (Rust
-  1.91.0, soroban-sdk 27.0.4, `wasm32v1-none`): 30 passed, 0 failed,
+  1.91.0, soroban-sdk 27.0.6, `wasm32v1-none`): 30 passed, 0 failed,
   with only the `test_TODO_*` stubs for the still-open gaps — L-10 and
   Q-1/Q-2 — `#[ignore]`d (C-1 and C-2 are now implemented and tested); see
   `contracts/BUILD_ENV_NOTES.md`.

@@ -9,13 +9,13 @@ coverage/
 *.tsbuildinfo
 .pnpm-store/
 
-# Lockfile policy: commit lockfiles for all packages with installable
-# dependencies. The evm-contracts lockfile is required by the CI job
-# (`npm ci` + setup-node cache-dependency-path); the `!sdk/package-lock.json`
-# negation must come AFTER the `sdk/package-lock.json` ignore rule for the
-# re-include to take effect (later .gitignore rules override earlier ones).
-sdk/package-lock.json
-!sdk/package-lock.json
+# Lockfile policy: commit every lockfile. Never delete a lockfile to make a
+# build pass — regenerate it instead.
+#   pnpm-lock.yaml                 pnpm workspace (root + all workspace packages)
+#   contracts/package-lock.json    npm project for the EVM contracts (CI: npm ci)
+#   package-lock.json,             npm mirrors of the root / packages/sdk /
+#   packages/sdk/package-lock.json,apps/api manifests, kept in sync
+#   apps/api/package-lock.json
 
 # ────── Rust / Soroban ──────
 target/
@@ -71,4 +71,6 @@ infra/data/
 *.sql.gz
 *.dump
 .vercel
-.env*
+# NOTE: environment files are handled above (`.env`, `.env.*`, with
+# `!.env.example`). Do not add a blanket `.env*` rule here — it would
+# re-ignore the committed `*.env.example` templates.

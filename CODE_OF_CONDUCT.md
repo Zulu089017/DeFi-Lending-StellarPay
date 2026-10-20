@@ -56,9 +56,20 @@ an individual is officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-conduct@spg.xyz. All complaints will be reviewed and investigated promptly and
-fairly.
+reported to the community leaders responsible for enforcement by:
+
+- opening a **confidential report** through GitHub:
+  <https://github.com/Zulu089017/DeFi-Lending-StellarPay/security/advisories/new>,
+  or
+- contacting the maintainer directly through their GitHub profile:
+  <https://github.com/Zulu089017>.
+
+> The previous address (`conduct@spg.xyz`) was removed because `spg.xyz` is not
+> a domain this project controls, so mail sent there may not reach the
+> maintainers. If you have a working contact address for the maintainer, it is
+> equally acceptable — please do not post the report in a public issue.
+
+All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.

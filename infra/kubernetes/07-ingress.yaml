@@ -1,3 +1,8 @@
+# NOTE: `spg.xyz` / `api.spg.xyz` are PLACEHOLDERS. This project does not
+# control that domain today (it resolves to an unrelated third-party site) and
+# no DNS record exists for `app.spg.xyz`. Replace the hosts below with a
+# domain the project actually controls before applying this manifest, and only
+# after the DNS + TLS records exist. See DEPLOYMENTS.md.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

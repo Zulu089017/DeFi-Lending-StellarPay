@@ -1,10 +1,10 @@
 # Audit Readiness Checklist
 
 > This checklist must be completed before the first formal audit. Status: ✅
-> Mostly Complete — contracts, tests, and docs are audit-ready. E2E testnet
-> flow, attester key management, and the DR runbook are now documented
-> (2026-08-15); remaining items are operational (load/chaos tests, bug bounty,
-> monitoring).
+> Mostly Complete — contracts, tests, and docs are audit-ready. Audit target:
+> **Q1 2027**, **Trail of Bits** (primary) / **Halborn** (backup), quote pending
+> (expected 2026-09-15). See [`docs/security.md`](security.md) and
+> [`SECURITY.md`](../SECURITY.md) for the concrete security plan.
 
 ## Pre-audit requirements
 
@@ -32,8 +32,9 @@
 ### Testing
 
 - [x] Unit tests for each Soroban contract function
-- [x] Invariant tests (17 tests execute and pass on Rust 1.91.0 + soroban-sdk
-      27.0.4 — see `contracts/BUILD_ENV_NOTES.md`; `docs/invariants.md` § 9)
+- [x] Invariant tests — 42 `invariant_*` tests (18 lending, 6 liquidation, 6
+      controller, 4 oracle, 4 collateral vault, 4 wrapped asset) execute and
+      pass on Rust 1.91.0 + soroban-sdk 27.0.6; see `docs/invariants.md` § 4
 - [x] Bridge unit tests (Solidity, attest signing)
 - [x] Fuzz tests for Soroban financial math (LCG-based PRNG, 50-100 iterations)
 - [x] Property-based tests (random op sequences + invariant checks)
@@ -50,7 +51,8 @@
 
 - [x] `cargo clippy` with deny lints
 - [x] Slither on EVM contracts
-- [ ] `cargo audit` for known Rust vulnerabilities
+- [ ] `cargo audit` for known Rust vulnerabilities — tracked in
+      `docs/security.md` “Remaining before mainnet”
 - [ ] `npm audit` for known TS vulnerabilities — **status (2026-08-26):** the
       production-relevant critical (`next` 14.2.4 middleware auth bypass,
       CVE-2025-29927) is patched by the 14.2.25 bump; `apps/web` uses no
@@ -59,26 +61,34 @@
       high/moderate tail are dev/test chains (vite/vitest/postcss/nanoid) that
       need breaking major upgrades, deferred as tracked in `ci.yml`
       (`pnpm audit … || true`).
-- [ ] Formal verification (Certora / Move Prover style)
+- [ ] Formal verification (Certora / Move Prover style) — stretch, post-audit
 
 ### Key management
 
 - [x] Attester keys stored in HSM or KMS (not plaintext env vars) — moved to
       `ATTESTER_KEYS_FILE` mounted secret; full HSM/KMS is a funded post-grant
       milestone (2026-08-15)
-- [ ] Admin multisig keys documented and access-controlled
+- [x] Admin multisig keys documented and access-controlled — multi-admin set
+      with threshold + 24h timelock implemented and tested in
+      `lending_controller`; key-storage recommendations in `docs/deployment.md`
+      § 8; live on-testnet dry-run pending funded admin keys
 - [ ] Key rotation procedure tested
 - [x] Disaster recovery runbook published and tested — pause triggers + rollback
       procedure + tabletop dry-run log (2026-08-15)
 
 ### Deployment configuration
 
-- [ ] All contract addresses pinned in `packages/packages/sdk/src/manifest.json`
+- [ ] All contract addresses pinned in `packages/sdk/src/manifest.json`
 - [ ] `stellar.toml` published and verified
 - [ ] DNS + TLS for `spg.xyz` and `api.spg.xyz`
-- [ ] CORS origins restricted (not `*`)
-- [ ] Rate limiting enabled on API
-- [ ] Monitoring dashboards deployed (Prometheus + Grafana)
+- [ ] CORS origins restricted (not `*`) — mechanism exists (`CORS_ORIGINS` env
+      in `apps/api`); must be set in the production deployment
+- [x] Rate limiting enabled on API — Redis-backed fixed-window limiter with
+      in-memory fallback, per-route caps, WS caps (2026-08); see
+      `docs/monitoring.md`
+- [x] Monitoring dashboards deployed — Prometheus + Grafana with provisioned
+      dashboard, `/metrics` on every TS service (2026-08); see
+      `docs/monitoring.md`
 
 ## CI toolchain pins
 
@@ -131,16 +141,20 @@
 
 ## Audit scope
 
-| Component           | Lines of code | Language       | Auditor |
-| ------------------- | ------------- | -------------- | ------- |
-| `contracts/`        | ~2,500        | Rust (Soroban) | TBD     |
-| `contracts/`        | ~400          | Solidity       | TBD     |
-| `services/payment/` | ~800          | TypeScript     | TBD     |
-| `services/cron/`    | ~200          | TypeScript     | TBD     |
+| Component           | Lines of code | Language       | Auditor                                    |
+| ------------------- | ------------- | -------------- | ------------------------------------------ |
+| `contracts/`        | ~2,500        | Rust (Soroban) | Trail of Bits (primary) / Halborn (backup) |
+| `contracts/`        | ~400          | Solidity       | Trail of Bits (primary) / Halborn (backup) |
+| `services/payment/` | ~800          | TypeScript     | Trail of Bits (primary) / Halborn (backup) |
+| `services/cron/`    | ~200          | TypeScript     | Trail of Bits (primary) / Halborn (backup) |
+
+Audit plan, budget ($140k of the SCF Wave 8 ask), and bounty tiers:
+[`docs/security.md`](security.md) and [`SECURITY.md`](../SECURITY.md).
 
 ## Post-audit
 
 - [ ] All findings triaged (critical/high fixed; medium/low acknowledged)
 - [ ] Retest regression suite against fixes
 - [ ] Publish audit report
-- [ ] Launch bug bounty program
+- [ ] Launch bug bounty program (target: within 60 days of the audit report;
+      scope + tiers in [`SECURITY.md`](../SECURITY.md))

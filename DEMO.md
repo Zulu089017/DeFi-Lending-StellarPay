@@ -3,18 +3,38 @@
 > **Duration:** 3–5 minutes **Recording tool:** Loom (free), OBS (free), or
 > QuickTime (macOS) **Target audience:** SCF Wave 8 grant reviewers
 
+> **There is no hosted demo.** `app.spg.xyz` has no DNS record, so the dashboard
+> must be run locally (see [Setup](#setup-before-recording)) and the recording
+> shows a local instance. The script below never claims a live hosted URL.
+
 ## Setup before recording
 
-1. Open the live dashboard: https://app.spg.xyz
+1. Start the stack locally and open the dashboard at `http://localhost:3000`
+   (see [Setup](#setup-before-recording) below).
 2. Open Stellar Expert testnet: https://stellar.expert/explorer/testnet
-3. Have the contract addresses open from [DEPLOYMENTS.md](../DEPLOYMENTS.md)
+3. Have the contract addresses open from [DEPLOYMENTS.md](DEPLOYMENTS.md) — and
+   re-verify each ID with
+   `stellar contract info <contract-id> --network testnet` before recording (the
+   table in `DEPLOYMENTS.md` is marked as needing re-verification).
 4. Mute notifications and close unrelated tabs
+
+### Setup
+
+```bash
+pnpm install --frozen-lockfile
+docker compose -f infra/docker/docker-compose.dev.yml up -d
+cp apps/web/.env.example apps/web/.env
+cp apps/api/.env.example apps/api/.env
+pnpm --filter @stellar-payment-gateway/api exec prisma generate
+pnpm --filter @stellar-payment-gateway/api exec prisma db push
+pnpm dev
+```
 
 ## Scene-by-scene script
 
 ### Scene 1 — Intro (30s)
 
-- **Show:** The README / dashboard landing page
+- **Show:** The local dashboard landing page (`http://localhost:3000`)
 - **Say:** "StellarPay is a cross-chain lending protocol built on Stellar's
   Soroban platform. Tokens from Ethereum are wrapped into Stellar-native assets,
   then supplied, borrowed, and liquidated — all with sub-cent fees and 5-second
@@ -26,10 +46,10 @@
 - **Point out:** Markets table (wETH, wUSDC), utilization chart, stats overview
   (TVL, total supplied, total borrowed)
 - **Show:** The `/bridge`, `/lend`, `/liquidations` navigation tabs
-- **Say:** "This is the live dashboard connected to Stellar testnet. You can see
-  real-time markets data, utilization rates, and the health of the protocol. The
-  bridge page handles cross-chain wrapping, lend handles supply and borrow, and
-  liquidations shows underwater positions."
+- **Say:** "This is the dashboard running locally against Stellar testnet. You
+  can see real-time markets data, utilization rates, and the health of the
+  protocol. The bridge page handles cross-chain wrapping, lend handles supply
+  and borrow, and liquidations shows underwater positions."
 
 ### Scene 3 — Architecture (30s)
 
@@ -47,11 +67,16 @@
     `CBNG3R6J2S4ZP7OEKIOS2JRVOJWG6YA56UR6N4Z4ZWIOH6LEX6R4NI2X`
   - Lending pool: `CAC5WYMZJIQKPFM6FRE6GHB37MQYGBBFKOVPJ7RMV46Z3II2VVBGS5FO`
   - Wrapped ETH: `CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL`
-- **Say:** "All 7 Soroban contracts are deployed and verified on Stellar
-  testnet. Here you can see the lending controller with its 6 storage keys —
-  including the BridgeSet with 3 attester public keys and a 2-of-3 threshold,
-  the admin multisig set, and the contract addresses for wrapped_asset,
-  lending_pool, collateral_vault, and oracle."
+- **Say:** "The 7 Soroban contracts are deployed on Stellar testnet. Here you
+  can see the lending controller with its 6 storage keys — including the
+  BridgeSet with 3 attester public keys and a 2-of-3 threshold, the admin
+  multisig set, and the contract addresses for wrapped_asset, lending_pool,
+  collateral_vault, and oracle."
+
+> ⚠️ Before recording, confirm the contract IDs on-chain
+> (`stellar contract info <id> --network testnet`). The IDs in `DEPLOYMENTS.md`
+> are the ones created in the 2026-08-09 deployment run, but they have not been
+> re-verified against Horizon since.
 
 ### Scene 5 — Multi-attester security (45s)
 
@@ -70,10 +95,16 @@
 
 - **Show:** Terminal running `cargo test --workspace` (or a screenshot of
   passing tests)
-- **Say:** "The protocol has 103 passing tests, including 26 invariant tests
-  covering lending pool solvency, liquidation bonus math, oracle median
-  aggregation, and cross-contract integration. The CI pipeline runs clippy with
-  deny-warnings, cargo fmt, and the full test suite on every push."
+- **Say:** "The Rust workspace contains 113 test functions, 42 of which are
+  named invariants covering lending pool solvency, liquidation bonus math,
+  oracle median aggregation, and cross-contract integration. The CI pipeline
+  runs clippy with deny-warnings, cargo fmt, and the full test suite on every
+  push."
+
+> ⚠️ Show CI output, not a local run, unless a Rust toolchain (1.91.0 +
+> `wasm32v1-none`) is installed — the container used to write this script had no
+> Rust toolchain, so the Soroban suite was verified in CI only (see
+> [`docs/verification-status.md`](docs/verification-status.md)).
 
 ### Scene 7 — Close (30s)
 
@@ -81,8 +112,8 @@
 - **Say:** "StellarPay is testnet-deployed and ready for audit. We're requesting
   SCF Wave 8 funding primarily for a Trail of Bits audit and to complete the
   multi-attester signing with hardware-backed key storage. The code is open
-  source, all docs are in the repo, and the live demo is at the link in the
-  README. Thank you for your consideration."
+  source and all docs are in the repo, and the dashboard you're looking at runs
+  locally against testnet. Thank you for your consideration."
 
 ## After recording
 

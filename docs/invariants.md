@@ -68,7 +68,7 @@
 >
 > **✅ Status of the invariant tests in this repo.** All invariants below now
 > have executing tests. On the pinned toolchain (Rust 1.91.0, soroban-sdk
-> 27.0.4, `wasm32v1-none`), `cargo test --workspace --locked` runs the full
+> 27.0.6, `wasm32v1-none`), `cargo test --workspace --locked` runs the full
 > suite — zero failures. `invariant_*`-named tests: 18 lending pool (L-1…L-16,
 > incl. L-10 sub-cases), 6 liquidation (Q-3…Q-9, with Q-1/Q-2 covered by
 > `test_healthy_position_reverts` / `test_close_factor_enforced`), 6 controller
@@ -77,6 +77,15 @@
 > (2026-08) along with the `LastAccrual` initialization fix they exposed.
 > Migration history:
 > [`contracts/BUILD_ENV_NOTES.md`](../contracts/BUILD_ENV_NOTES.md).
+>
+> **Counts as of 2026-10-20.** The workspace contains **113 `#[test]`
+> functions**, of which **42 are named `invariant_*`** (18 lending pool, 6
+> liquidation, 6 controller, 4 oracle, 4 collateral vault, 4 wrapped asset) —
+> the breakdown above matches the source. The remaining 71 are unit,
+> cross-contract (`contracts/integration-tests/src/cross_contract.rs`),
+> governance/rewards and fuzz-helper tests. See
+> [`docs/verification-status.md`](verification-status.md) for which of these
+> were executed in the last verification pass.
 
 ## 5. Liquidation Engine (`liquidation`)
 
@@ -163,7 +172,7 @@
 
 > **✅ Status of the invariant tests in this repo.** Every invariant in this
 > document now has a corresponding executing test (see § 4 for the breakdown),
-> on the pinned toolchain (Rust 1.91.0, soroban-sdk 27.0.4, `wasm32v1-none`) —
+> on the pinned toolchain (Rust 1.91.0, soroban-sdk 27.0.6, `wasm32v1-none`) —
 > zero failures. Cross-contract integration tests (Q-5, Q-6, C-7, C-8) are
 > **closed (2026-08)** — the liquidation engine calls `pool.repay_on_behalf` and
 > `vault.seize` atomically, and the controller cross-calls `wrapped_asset`,
