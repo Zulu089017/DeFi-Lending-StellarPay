@@ -52,6 +52,32 @@ export const bridgeEventsIngestedTotal = new Counter({
   registers: [registry],
 });
 
+export const bridgeUnwrapsIngestedTotal = new Counter({
+  name: "bridge_unwraps_ingested_total",
+  help: "Valid Stellar unwrap events persisted for EVM release",
+  registers: [registry],
+});
+
+export const bridgeReleasesTotal = new Counter({
+  name: "bridge_releases_total",
+  help: "Unwraps released on their source chain (confirmed)",
+  labelNames: ["chain"],
+  registers: [registry],
+});
+
+export const bridgeReleaseFailuresTotal = new Counter({
+  name: "bridge_release_failures_total",
+  help: "Release attempts that failed (excluding replay-detected successes)",
+  labelNames: ["chain"],
+  registers: [registry],
+});
+
+export const bridgePendingReleases = new Gauge({
+  name: "bridge_pending_releases",
+  help: "Unwraps still awaiting an EVM release",
+  registers: [registry],
+});
+
 /** Increment on any per-key signing failure in `attest/signer.ts`. */
 export function recordAttestError(): void {
   bridgeAttestErrorsTotal.inc();

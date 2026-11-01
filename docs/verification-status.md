@@ -5,46 +5,48 @@
 > reviewer does not have to guess whether a green check was seen or merely
 > assumed.
 
-**Pass date:** 2026-10-20 **Environment:** Codespace container (Linux, x86_64)
+**Pass date:** 2026-11-01 (latest) · 2026-10-20 (previous) **Environment:**
+Codespace container (Linux, x86_64)
 
-| Component          | Version in this environment | Version pinned by the repo                         |
-| ------------------ | --------------------------- | -------------------------------------------------- |
-| Node.js            | v24.21.0                    | CI: 22 (`NODE_VERSION`)                            |
-| pnpm               | 10.0.0                      | `packageManager: pnpm@10.0.0`                      |
-| npm                | 11.19.0                     | used only by `contracts/`                          |
-| Rust / cargo       | **not installed**           | CI: 1.91.0 + `wasm32v1-none`                       |
-| Docker             | **not available**           | optional (Postgres / Redis for local services)     |
-| `slither-analyzer` | **not installed**           | CI: `crytic/slither-action@v0.4.2`, slither 0.11.4 |
+| Component          | Version in this environment                                           | Version pinned by the repo                         |
+| ------------------ | --------------------------------------------------------------------- | -------------------------------------------------- |
+| Node.js            | v24.22.2                                                              | CI: 22 (`NODE_VERSION`)                            |
+| pnpm               | 10.0.0                                                                | `packageManager: pnpm@10.0.0`                      |
+| npm                | 11.19.0                                                               | used only by `contracts/`                          |
+| Rust / cargo       | **1.91.0 installed for this pass** (`wasm32v1-none`, rustfmt, clippy) | CI: 1.91.0 + `wasm32v1-none`                       |
+| Docker             | **not available**                                                     | optional (Postgres / Redis for local services)     |
+| `slither-analyzer` | **not installed**                                                     | CI: `crytic/slither-action@v0.4.2`, slither 0.11.4 |
 
 ## Executed and passing
 
-| Command (run from the repository root)                                                                     | Result                                                                                       |
-| ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile`                                                                           | ✅ `Already up to date` — `pnpm-lock.yaml` is in sync with every workspace manifest          |
-| `pnpm exec prettier --check "**/*.{json,md,yml,yaml}" "!**/node_modules/**" "!**/dist/**" "!**/target/**"` | ✅ no files reported                                                                         |
-| `pnpm typecheck`                                                                                           | ✅ 12/12 turbo tasks                                                                         |
-| `pnpm lint`                                                                                                | ✅ 2/2 turbo tasks (0 errors; 5 warnings from `bridge` and `dashboard`)                      |
-| `pnpm test`                                                                                                | ✅ 35/35 turbo tasks — 56 tests: api 27, bridge 17, sdk 7, dashboard 3, indexer 1, relayer 1 |
-| `pnpm --filter @stellar-payment-gateway/{bridge,relayer,indexer,api,sdk} exec prisma generate`             | ✅ 4 Prisma clients generated                                                                |
-| `pnpm --filter @stellar-payment-gateway/{bridge,relayer,indexer,api,sdk} exec tsc --noEmit`                | ✅ clean                                                                                     |
-| `pnpm --filter @stellar-payment-gateway/sdk build`                                                         | ✅ `dist/` emitted                                                                           |
-| `pnpm --filter @stellar-payment-gateway/dashboard exec tsc --noEmit`                                       | ✅ clean                                                                                     |
-| `pnpm --filter @stellar-payment-gateway/dashboard test`                                                    | ✅ 3 tests                                                                                   |
-| `pnpm --filter @stellar-payment-gateway/dashboard exec next lint`                                          | ✅ clean (warnings only)                                                                     |
-| `pnpm --filter @stellar-payment-gateway/dashboard build`                                                   | ✅ Next.js production build succeeded                                                        |
-| `cd contracts && npm ci`                                                                                   | ✅ lockfile in sync with `contracts/package.json`                                            |
-| `cd contracts && npx hardhat compile`                                                                      | ✅ compiled (Solidity 0.8.24, optimizer + `viaIR`)                                           |
-| `cd contracts && npx hardhat test`                                                                         | ✅ **17 passing**                                                                            |
-| `npm ci --dry-run` in the repository root, `packages/sdk`, `apps/api`                                      | ✅ all three npm lockfiles in sync with their manifests                                      |
+| Command (run from the repository root)                                                                     | Result                                                                                           |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `pnpm install --frozen-lockfile`                                                                           | ✅ `Already up to date` — `pnpm-lock.yaml` is in sync with every workspace manifest              |
+| `pnpm exec prettier --check "**/*.{json,md,yml,yaml}" "!**/node_modules/**" "!**/dist/**" "!**/target/**"` | ✅ no files reported                                                                             |
+| `pnpm typecheck`                                                                                           | ✅ 12/12 turbo tasks                                                                             |
+| `pnpm lint`                                                                                                | ✅ 2/2 turbo tasks (0 errors; 5 warnings from `bridge` and `dashboard`)                          |
+| `pnpm test` (2026-11-01)                                                                                   | ✅ 35/35 turbo tasks — **94 tests**: api 30, bridge 52, sdk 7, dashboard 3, indexer 1, relayer 1 |
+| `pnpm --filter @stellar-payment-gateway/{bridge,relayer,indexer,api,sdk} exec prisma generate`             | ✅ 4 Prisma clients generated                                                                    |
+| `pnpm --filter @stellar-payment-gateway/{bridge,relayer,indexer,api,sdk} exec tsc --noEmit`                | ✅ clean                                                                                         |
+| `pnpm --filter @stellar-payment-gateway/sdk build`                                                         | ✅ `dist/` emitted                                                                               |
+| `pnpm --filter @stellar-payment-gateway/dashboard exec tsc --noEmit`                                       | ✅ clean                                                                                         |
+| `pnpm --filter @stellar-payment-gateway/dashboard test`                                                    | ✅ 3 tests                                                                                       |
+| `pnpm --filter @stellar-payment-gateway/dashboard exec next lint`                                          | ✅ clean (warnings only)                                                                         |
+| `pnpm --filter @stellar-payment-gateway/dashboard build`                                                   | ✅ Next.js production build succeeded                                                            |
+| `cd contracts && npm ci`                                                                                   | ✅ lockfile in sync with `contracts/package.json`                                                |
+| `cd contracts && npx hardhat compile`                                                                      | ✅ compiled (Solidity 0.8.24, optimizer + `viaIR`)                                               |
+| `cd contracts && npx hardhat test`                                                                         | ✅ **17 passing**                                                                                |
+| `npm ci --dry-run` in the repository root, `packages/sdk`, `apps/api`                                      | ✅ all three npm lockfiles in sync with their manifests                                          |
+| `cd contracts && npm ci && npx hardhat compile && npx hardhat test` (re-run 2026-11-01)                    | ✅ compiled; **17 passing**                                                                      |
+| `cd contracts && cargo fmt --all -- --check` (Rust 1.91.0 installed 2026-11-01)                            | ✅ clean                                                                                         |
+| `cd contracts && cargo clippy --workspace --all-targets --locked -- -D warnings`                           | ✅ clean (finished in 1m48s)                                                                     |
+| `cd contracts && cargo test --workspace --locked`                                                          | ✅ **112 passed, 0 failed** (113 `#[test]` declared; one not compiled)                           |
+| `cd contracts && cargo check --workspace --locked --target wasm32v1-none --release`                        | ✅ finished in 1m05s                                                                             |
 
 ## Not executable here — and exactly why
 
 | Check                                                                   | Blocker                                                                                                     | How to run it                                                                                                 |
 | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `cargo fmt --all -- --check`                                            | No Rust toolchain in the container (`rustc: command not found`)                                             | `rustup toolchain install 1.91.0 --target wasm32v1-none` then `cd contracts && cargo fmt --all -- --check`    |
-| `cargo check --workspace --locked --target wasm32v1-none --release`     | same                                                                                                        | same, with the target installed                                                                               |
-| `cargo clippy --workspace --all-targets --locked -- -D warnings`        | same                                                                                                        | same                                                                                                          |
-| `cargo test --workspace --locked`                                       | same — **113 `#[test]` functions** (42 named `invariant_*`) exist in the tree but were not executed here    | same                                                                                                          |
 | Slither static analysis                                                 | `slither-analyzer` is not installed and the PyPI install requires network + Python ≥ 3.10 for ≥ 0.11.5      | `pipx install slither-analyzer==0.11.4` then `slither contracts/lending/evm --filter-paths "node_modules      | openzeppelin"` |
 | Docker-backed integration flows (`infra/docker/docker-compose.dev.yml`) | No Docker daemon in the container                                                                           | `docker compose -f infra/docker/docker-compose.dev.yml up -d`                                                 |
 | Live dashboard / API                                                    | `app.spg.xyz` and `api.spg.xyz` have **no DNS record**; `spg.xyz` resolves to an unrelated third-party site | Deploy `apps/web` and `apps/api` and configure the DNS — until then the repository does not claim a live demo |

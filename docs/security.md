@@ -26,8 +26,12 @@ V-1…V-5, W-3…W-6, B-1…B-7).
 
 **Remaining:**
 
-- [ ] X-1…X-3 cross-system backing/causality tests (unwrap → `Bridge.release`
-      not wired end-to-end; top priority)
+- [x] X-1…X-4 cross-system predicates tested
+      (`services/payment/src/invariants.ts`) and the unwrap → `Bridge.release`
+      pipeline wired with state-machine tests
+- [ ] Live reconciliation job feeding X-1…X-4 from chain + database
+- [ ] Release pipeline exercised against a deployed EVM `Bridge` (none exists
+      yet)
 - [ ] Live on-testnet DR dry-run (pending funded admin keys)
 - [ ] Load test (1,000 users); chaos tests
 - [ ] `cargo audit` / `npm audit` clean (dev/test findings only)

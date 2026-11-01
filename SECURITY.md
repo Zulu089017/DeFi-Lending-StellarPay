@@ -55,10 +55,12 @@ services, SDK, dashboards. Paid in wTKN.
 
 ## Known risks (from `docs/invariants.md`)
 
-All contract invariants (L, Q, C, O, V, W, B) have executing tests. **No
-automated test yet:** X-1…X-3 (cross-chain backing/causality — unwrap →
-`Bridge.release` not wired end-to-end) and X-4 (view consistency). These are
-audit priorities.
+All contract invariants (L, Q, C, O, V, W, B) have executing tests. Cross-system
+invariants X-1…X-4 now have executable predicate tests, and the `unwrap` →
+`Bridge.release` pipeline is implemented with state-machine tests. Two gaps
+remain and are audit priorities: **no live reconciliation job** feeds X-1…X-4
+from chain + database, and the release pipeline has **not been run against a
+deployed EVM `Bridge`** (none exists yet).
 
 The exact status of every check in this repository — including the checks that
 could **not** be executed in the last verification pass — is recorded in

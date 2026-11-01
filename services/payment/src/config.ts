@@ -15,9 +15,35 @@ const Env = z.object({
   STELLAR_CONTROLLER: z.string(),
   RELAYER_SECRET: z.string(),
 
+  // Soroban RPC endpoint used to read `unwrap` contract events. Horizon (the
+  // STELLAR_RPC above) cannot serve contract events, so unwrap watching stays
+  // disabled until this is set. Optional so the mint-only bridge still boots.
+  STELLAR_SOROBAN_RPC: z.string().url().optional(),
+  // First ledger the unwrap watcher scans when no cursor is persisted. When
+  // unset, the watcher starts at the RPC's oldest retained ledger.
+  STELLAR_SOROBAN_START_LEDGER: z.coerce.number().int().nonnegative().optional(),
+
   ATTESTER_KEYS: z.string().optional(),
   ATTESTER_KEYS_FILE: z.string().optional(),
   ATTESTER_THRESHOLD: z.coerce.number().int().positive(),
+
+  // ── EVM release path (unwrap → Bridge.release) ────────────────────────
+  // secp256k1 attester keys for EIP-712 `Release` signatures. Independent of
+  // the ed25519 ATTESTER_KEYS which sign Stellar `wrap` payloads.
+  EVM_ATTESTER_KEYS: z.string().optional(),
+  EVM_ATTESTER_KEYS_FILE: z.string().optional(),
+  EVM_ATTESTER_THRESHOLD: z.coerce.number().int().positive().default(2),
+  // Canonical token address released on each source chain. A chain without a
+  // token configured stays disabled (no unwraps are processed for it).
+  ETHEREUM_RELEASE_TOKEN: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  POLYGON_RELEASE_TOKEN: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  // EVM tx submitter keys. Without one, the release path is read-only.
+  ETHEREUM_RELAYER_PK: z.string().regex(/^(0x)?[a-fA-F0-9]{64}$/).optional(),
+  POLYGON_RELAYER_PK: z.string().regex(/^(0x)?[a-fA-F0-9]{64}$/).optional(),
+  // Block confirmations required before an unwrap is marked released.
+  EVM_RELEASE_CONFIRMATIONS: z.coerce.number().int().positive().default(2),
+  EVM_RELEASE_GAS_LIMIT: z.coerce.number().int().positive().default(300_000),
+  MAX_RELEASE_ATTEMPTS: z.coerce.number().int().positive().default(10),
 
   DATABASE_URL: z.string().url(),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
@@ -52,3 +78,18 @@ function loadAttesterKeys(): string[] {
 }
 
 export const attesters = loadAttesterKeys();
+
+/** Load the optional EVM attester keys from a mounted file (preferred) or
+ *  the plaintext env var. Returns [] when neither is set — the release path
+ *  is then disabled rather than failing every unwrap. */
+function loadEvmAttesterKeys(): string[] {
+  const raw = config.EVM_ATTESTER_KEYS_FILE
+    ? readFileSync(config.EVM_ATTESTER_KEYS_FILE, "utf8")
+    : (config.EVM_ATTESTER_KEYS ?? "");
+  return raw
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export const evmAttesters = loadEvmAttesterKeys();

@@ -71,6 +71,23 @@ describe("GET /v1/markets", () => {
     }
   });
 
+  it("subtracts withdraw from totalSupply (X-4)", async () => {
+    // On-chain `total_deposit` falls on withdrawal; the API must match it.
+    await seedLendingEvent({ type: "supply", user: "alice", asset: "XLM", amount: 1000n });
+    await seedLendingEvent({ type: "withdraw", user: "alice", asset: "XLM", amount: 400n });
+
+    const app = await buildApp({ logger: false });
+    try {
+      const res = await app.inject({ method: "GET", url: "/v1/markets" });
+      const xlm = (res.json() as Array<Record<string, unknown>>).find(
+        (m) => m.asset === "XLM",
+      )!;
+      expect(xlm.totalSupply).toBe("600"); // 1000 - 400
+    } finally {
+      await app.close();
+    }
+  });
+
   it("subtracts repay from totalBorrow", async () => {
     await seedLendingEvent({ type: "supply", user: "alice", asset: "XLM", amount: 1000n });
     await seedLendingEvent({ type: "borrow", user: "alice", asset: "XLM", amount: 500n });

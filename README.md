@@ -81,27 +81,27 @@ makes an always-on, permissionless liquidation engine practical.
 
 ## Feature overview
 
-| Feature                                               | Where it lives                                     | Tests                                         | Status                                                            |
-| ----------------------------------------------------- | -------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------- |
-| Supply / withdraw (share-priced)                      | `contracts/lending/soroban`                        | `invariant_*` + unit tests                    | Implemented, tested                                               |
-| Borrow / repay (index-based debt)                     | `contracts/lending/soroban`                        | `invariant_*` + unit tests                    | Implemented, tested                                               |
-| Collateral accounting (vault positions)               | `contracts/collateral/soroban`                     | `invariant_*` + unit tests                    | Implemented, tested                                               |
-| Health factor + LTV enforcement                       | `contracts/lending/soroban`                        | property test `prop_health_factor_monotonic`  | Implemented, tested                                               |
-| Interest accrual (utilisation curve with kink)        | `contracts/lending/soroban`                        | unit + property tests                         | Implemented, tested                                               |
-| Permissionless liquidation (close factor, bonus, fee) | `contracts/liquidation/soroban`                    | `invariant_Q*` + unit tests                   | Implemented, tested                                               |
-| Oracle (multi-publisher, staleness heartbeat)         | `contracts/oracle/soroban`                         | `invariant_O*`                                | Implemented, tested                                               |
-| Bridge attestation pipeline (ed25519, 2-of-3)         | `contracts/lending/controller`, `services/payment` | Rust + TS signer cross-language digest canary | Implemented, tested                                               |
-| Replay protection (salt reuse → revert)               | `contracts/lending/controller`, `Bridge.sol`       | `invariant_C2`, `B-1`                         | Implemented, tested                                               |
-| EIP-712 domain separation on EVM release              | `contracts/lending/evm/Bridge.sol`                 | `B-7` regression test                         | Implemented, tested                                               |
-| Mint rate circuit breaker + pause surface             | `contracts/lending/controller`                     | `invariant_C3`, `C4`, `C5`, `B-6`             | Implemented, tested                                               |
-| Off-chain relayer / watcher                           | `services/cron`                                    | vitest                                        | Implemented, tested                                               |
-| Event indexer (Postgres)                              | `services/indexer`                                 | vitest                                        | Implemented, tested                                               |
-| Public REST + WebSocket API                           | `apps/api`                                         | vitest (27 tests)                             | Implemented, tested                                               |
-| Next.js dashboard                                     | `apps/web`                                         | vitest (3 tests) + `next lint`                | Implemented, tested                                               |
-| TypeScript SDK                                        | `packages/sdk`                                     | vitest (7 tests)                              | Implemented, tested                                               |
-| End-to-end unwrap → `Bridge.release`                  | —                                                  | **no test**                                   | **Not implemented** (see [Known limitations](#known-limitations)) |
-| Cross-system backing/causality invariants X-1…X-4     | —                                                  | **no test**                                   | **Not implemented**                                               |
-| Mainnet deployment, audit, bug bounty                 | —                                                  | —                                             | **Planned**                                                       |
+| Feature                                               | Where it lives                                                   | Tests                                         | Status                                                              |
+| ----------------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------- |
+| Supply / withdraw (share-priced)                      | `contracts/lending/soroban`                                      | `invariant_*` + unit tests                    | Implemented, tested                                                 |
+| Borrow / repay (index-based debt)                     | `contracts/lending/soroban`                                      | `invariant_*` + unit tests                    | Implemented, tested                                                 |
+| Collateral accounting (vault positions)               | `contracts/collateral/soroban`                                   | `invariant_*` + unit tests                    | Implemented, tested                                                 |
+| Health factor + LTV enforcement                       | `contracts/lending/soroban`                                      | property test `prop_health_factor_monotonic`  | Implemented, tested                                                 |
+| Interest accrual (utilisation curve with kink)        | `contracts/lending/soroban`                                      | unit + property tests                         | Implemented, tested                                                 |
+| Permissionless liquidation (close factor, bonus, fee) | `contracts/liquidation/soroban`                                  | `invariant_Q*` + unit tests                   | Implemented, tested                                                 |
+| Oracle (multi-publisher, staleness heartbeat)         | `contracts/oracle/soroban`                                       | `invariant_O*`                                | Implemented, tested                                                 |
+| Bridge attestation pipeline (ed25519, 2-of-3)         | `contracts/lending/controller`, `services/payment`               | Rust + TS signer cross-language digest canary | Implemented, tested                                                 |
+| Replay protection (salt reuse → revert)               | `contracts/lending/controller`, `Bridge.sol`                     | `invariant_C2`, `B-1`                         | Implemented, tested                                                 |
+| EIP-712 domain separation on EVM release              | `contracts/lending/evm/Bridge.sol`                               | `B-7` regression test                         | Implemented, tested                                                 |
+| Mint rate circuit breaker + pause surface             | `contracts/lending/controller`                                   | `invariant_C3`, `C4`, `C5`, `B-6`             | Implemented, tested                                                 |
+| Off-chain relayer / watcher                           | `services/cron`                                                  | vitest                                        | Implemented, tested                                                 |
+| Event indexer (Postgres)                              | `services/indexer`                                               | vitest                                        | Implemented, tested                                                 |
+| Public REST + WebSocket API                           | `apps/api`                                                       | vitest (30 tests)                             | Implemented, tested                                                 |
+| Next.js dashboard                                     | `apps/web`                                                       | vitest (3 tests) + `next lint`                | Implemented, tested                                                 |
+| TypeScript SDK                                        | `packages/sdk`                                                   | vitest (7 tests)                              | Implemented, tested                                                 |
+| Unwrap → EVM `Bridge.release` pipeline                | `services/payment` (`events/unwrap.ts`, `release/evmRelease.ts`) | vitest (state machine + EIP-712)              | Implemented, unit-tested; **not run against a live EVM deployment** |
+| Cross-system invariants X-1…X-4                       | `services/payment/src/invariants.ts`                             | vitest incl. randomised X-1 flow              | Implemented, unit-tested; no live reconciliation job                |
+| Mainnet deployment, audit, bug bounty                 | —                                                                | —                                             | **Planned**                                                         |
 
 A per-feature breakdown (implementation → tests → config → verification status)
 is in [`docs/feature-evidence.md`](docs/feature-evidence.md).
@@ -247,13 +247,13 @@ Every service reads its configuration from a `.env` file in its own directory.
 `.env` is git-ignored; only `.env.example` files are committed, and they contain
 placeholders — never real keys.
 
-| File                            | Key variables (safe placeholder values)                                                                                                                                                                                                                         |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api/.env.example`         | `DATABASE_URL=postgresql://spg:spg@localhost:5432/spg`, `STELLAR_RPC=https://horizon-testnet.stellar.org`, `STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015`, `STELLAR_CONTROLLER=<lending_controller contract id>`, `PORT=4000`, `CORS_ORIGINS=*` |
-| `apps/web/.env.example`         | `NEXT_PUBLIC_API_URL=http://localhost:4000`, `NEXT_PUBLIC_STELLAR_CONTROLLER=<contract id>`                                                                                                                                                                     |
-| `services/payment/.env.example` | `ETHEREUM_RPC`, `POLYGON_RPC`, `SOLANA_RPC`, `RELAYER_SECRET` (**secret key — never commit**), `ATTESTER_KEYS` / `ATTESTER_KEYS_FILE`, `ATTESTER_THRESHOLD=2`                                                                                                   |
-| `services/indexer/.env.example` | `DATABASE_URL`, `STELLAR_RPC`, `STELLAR_CONTROLLER`                                                                                                                                                                                                             |
-| `services/cron/.env.example`    | `DATABASE_URL`, source-chain RPCs, `RELAYER_SECRET`                                                                                                                                                                                                             |
+| File                            | Key variables (safe placeholder values)                                                                                                                                                                                                                                                                                |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/.env.example`         | `DATABASE_URL=postgresql://spg:spg@localhost:5432/spg`, `STELLAR_RPC=https://horizon-testnet.stellar.org`, `STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015`, `STELLAR_CONTROLLER=<lending_controller contract id>`, `PORT=4000`, `CORS_ORIGINS=*`                                                        |
+| `apps/web/.env.example`         | `NEXT_PUBLIC_API_URL=http://localhost:4000`, `NEXT_PUBLIC_STELLAR_CONTROLLER=<contract id>`                                                                                                                                                                                                                            |
+| `services/payment/.env.example` | `ETHEREUM_RPC`, `POLYGON_RPC`, `SOLANA_RPC`, `RELAYER_SECRET` (**secret key — never commit**), `ATTESTER_KEYS` / `ATTESTER_KEYS_FILE`, `ATTESTER_THRESHOLD=2`, `STELLAR_SOROBAN_RPC` (unwrap watcher), `EVM_ATTESTER_KEYS` / `_FILE`, `ETHEREUM_/POLYGON_RELEASE_TOKEN`, `ETHEREUM_/POLYGON_RELAYER_PK` (release path) |
+| `services/indexer/.env.example` | `DATABASE_URL`, `STELLAR_RPC`, `STELLAR_CONTROLLER`                                                                                                                                                                                                                                                                    |
+| `services/cron/.env.example`    | `DATABASE_URL`, source-chain RPCs, `RELAYER_SECRET`                                                                                                                                                                                                                                                                    |
 
 Contract IDs come from
 [`packages/sdk/src/manifest.json`](packages/sdk/src/manifest.json), which the
@@ -359,32 +359,34 @@ CI (`.github/workflows/ci.yml`) has five jobs: `lint-configs`,
 `soroban-contracts`, `evm-contracts`, `ts-services` (matrix of 5 packages) and
 `frontend`.
 
-**Results below were executed locally on 2026-10-20** (Node v24.21.0, pnpm
-10.0.0, npm 11.19.0) with the repository's own commands:
+**Results below were executed locally on 2026-11-01** (Node v24.22.2, pnpm
+10.0.0, npm 11.19.0, Rust 1.91.0 + `wasm32v1-none`) with the repository's own
+commands:
 
-| Check                     | Command                                                                 | Result                                                                            |
-| ------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Install                   | `pnpm install --frozen-lockfile`                                        | ✅ pass                                                                           |
-| Config formatting         | `pnpm exec prettier --check "**/*.{json,md,yml,yaml}" …`                | ✅ pass                                                                           |
-| Type check (all packages) | `pnpm typecheck`                                                        | ✅ 12/12 turbo tasks                                                              |
-| Lint                      | `pnpm lint`                                                             | ✅ 2/2 turbo tasks (warnings only, 0 errors)                                      |
-| Unit tests (all packages) | `pnpm test`                                                             | ✅ 35/35 turbo tasks, **56 tests passed**                                         |
-| API service               | `pnpm --filter @stellar-payment-gateway/api exec tsc --noEmit` / `test` | ✅ 27 tests                                                                       |
-| Bridge service            | `…/bridge exec tsc --noEmit` / `test`                                   | ✅ 17 tests                                                                       |
-| SDK                       | `…/sdk exec tsc --noEmit` / `test` / `build`                            | ✅ 7 tests                                                                        |
-| Indexer / Relayer         | `…/indexer`, `…/relayer`                                                | ✅ 1 test each                                                                    |
-| Dashboard (Next.js)       | `tsc --noEmit`, `test`, `next lint`, `build`                            | ✅ 3 tests, lint clean, build OK                                                  |
-| EVM contracts             | `npx hardhat compile` / `npx hardhat test` (in `contracts/`)            | ✅ 17 tests passing                                                               |
-| Soroban contracts         | `cargo fmt/check/clippy/test --locked`                                  | ⚠️ **not runnable in this environment** — no Rust toolchain installed (see below) |
-| Slither static analysis   | `crytic/slither-action`                                                 | ⚠️ **not runnable in this environment** — `slither-analyzer` not installed        |
+| Check                     | Command                                                                 | Result                                                                     |
+| ------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Install                   | `pnpm install --frozen-lockfile`                                        | ✅ pass                                                                    |
+| Config formatting         | `pnpm exec prettier --check "**/*.{json,md,yml,yaml}" …`                | ✅ pass                                                                    |
+| Type check (all packages) | `pnpm typecheck`                                                        | ✅ 12/12 turbo tasks                                                       |
+| Lint                      | `pnpm lint`                                                             | ✅ 2/2 turbo tasks (warnings only, 0 errors)                               |
+| Unit tests (all packages) | `pnpm test`                                                             | ✅ 35/35 turbo tasks, **94 tests passed**                                  |
+| API service               | `pnpm --filter @stellar-payment-gateway/api exec tsc --noEmit` / `test` | ✅ 30 tests                                                                |
+| Bridge service            | `…/bridge exec tsc --noEmit` / `test`                                   | ✅ 52 tests                                                                |
+| SDK                       | `…/sdk exec tsc --noEmit` / `test` / `build`                            | ✅ 7 tests                                                                 |
+| Indexer / Relayer         | `…/indexer`, `…/relayer`                                                | ✅ 1 test each                                                             |
+| Dashboard (Next.js)       | `tsc --noEmit`, `test`, `next lint`, `build`                            | ✅ 3 tests, lint clean, build OK                                           |
+| EVM contracts             | `npx hardhat compile` / `npx hardhat test` (in `contracts/`)            | ✅ 17 tests passing                                                        |
+| Soroban formatting        | `cargo fmt --all -- --check` (Rust 1.91.0)                              | ✅ clean                                                                   |
+| Soroban clippy            | `cargo clippy --workspace --all-targets --locked -- -D warnings`        | ✅ clean                                                                   |
+| Soroban tests             | `cargo test --workspace --locked`                                       | ✅ **112 passed, 0 failed**                                                |
+| Slither static analysis   | `crytic/slither-action`                                                 | ⚠️ **not runnable in this environment** — `slither-analyzer` not installed |
 
-**Soroban test inventory (source-verified, not executed here):** the Rust
-workspace contains **113 `#[test]` functions**, of which **42 are named
-`invariant_*`** and map onto the invariant IDs in
-[`docs/invariants.md`](docs/invariants.md) (18 lending pool, 6 liquidation, 6
-controller, 4 oracle, 4 collateral vault, 4 wrapped asset). CI runs them on Rust
-**1.91.0** with the `wasm32v1-none` target against the committed
-`contracts/Cargo.lock` (`soroban-sdk 27.0.6`, `soroban-env-host 27.0.1`). No
+**Soroban test inventory:** the Rust workspace declares **113 `#[test]`
+functions**; **112 executed** in this pass (0 failed) — the remaining one is not
+compiled by the current workspace configuration. The suite runs on Rust
+**1.91.0** with `wasm32v1-none`, against the committed `contracts/Cargo.lock`
+(`soroban-sdk 27.0.6`, `soroban-env-host 27.0.1`).
+`cargo check --workspace --target wasm32v1-none --release` also passed. No
 coverage percentage is claimed anywhere in this repository.
 
 ### Reproducing the checks
@@ -407,10 +409,15 @@ pnpm exec prettier --check "**/*.{json,md,yml,yaml}" "!**/node_modules/**" "!**/
 - **Known unmitigated gaps** (all listed in
   [`docs/invariants.md`](docs/invariants.md) and
   [`docs/security.md`](docs/security.md)):
-  - Cross-system invariants **X-1…X-3** (wrapped-asset backing and wrap/unwrap
-    causality) have **no automated test**, because the unwrap → `Bridge.release`
-    path is not wired end to end.
-  - **X-4** (API/on-chain view consistency) is untested.
+  - The unwrap → `Bridge.release` pipeline is implemented and covered by unit
+    tests, but has **never been executed against a live EVM deployment** — no
+    `Bridge` is deployed (see [Known limitations](#known-limitations)). Its
+    end-to-end correctness therefore rests on the Solidity test suite plus the
+    unit tests, not on a cross-chain run.
+  - Cross-system invariants **X-1…X-4** have executable predicate tests
+    (`services/payment/src/invariants.ts`), but nothing yet feeds them live
+    chain + database data on a schedule; a reconciliation job remains to be
+    built.
   - `pnpm audit` reports dev-dependency advisories in the `api` package
     (transitive `testcontainers`/`vitest` chain); the audit step in CI is
     advisory (`|| true`) until those majors can be bumped.
@@ -428,8 +435,10 @@ pnpm exec prettier --check "**/*.{json,md,yml,yaml}" "!**/node_modules/**" "!**/
   domain.
 - **EVM bridge not deployed** on Sepolia/Amoy — `Bridge` is compiled and tested,
   but the addresses in `DEPLOYMENTS.md` are placeholders.
-- **Partial coverage of the on-chain flow** — the wrap leg needs either a local
-  `Bridge` deployment or the test fixtures.
+- **Partial coverage of the on-chain flow** — the wrap and release legs need
+  either a local `Bridge` deployment or the test fixtures. Until then, the
+  `unwrap` watcher and release submitter stay disabled (chains without a
+  configured token/submitter key are skipped, and unwraps remain `pending`).
 - **Package scope** is still `@stellar-payment-gateway/*`.
 - **`pnpm lint` covers 2 of 19 workspace packages** (only `bridge` and
   `dashboard` define a `lint` script); the remaining packages are covered by

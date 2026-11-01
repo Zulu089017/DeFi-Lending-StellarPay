@@ -53,16 +53,31 @@ model MintRequest {
 }
 
 model UnwrapEvent {
-  id            String   @id @default(cuid())
-  chain         String
-  txHash        String   @unique
-  user          String
-  amount        BigInt
-  sourceChain   String
-  sourceAddr    String
-  nonce         String
-  released      Boolean  @default(false)
-  createdAt     DateTime @default(now())
+  id             String   @id @default(cuid())
+  chain          String
+  // A single Stellar transaction may contain several `unwrap` operations,
+  // each with its own nonce. Uniqueness must therefore include the nonce,
+  // otherwise one unwrap would be collapsed and never released (X-3).
+  txHash         String
+  ledger         BigInt   @default(0)
+  user           String
+  amount         BigInt
+  chainId        Int      @default(0)
+  sourceChain    String
+  sourceAddr     String
+  nonce          String
+  recipient      String?
+  // pending | released | failed
+  status         String   @default("pending")
+  released       Boolean  @default(false)
+  releaseTxHash  String?
+  releaseAttempts Int     @default(0)
+  lastError      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([txHash, nonce])
+  @@index([status])
 }
 
 model Attestation {

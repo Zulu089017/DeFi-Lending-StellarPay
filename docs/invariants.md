@@ -155,7 +155,7 @@
 
 | #   | Invariant                                                                                                                         | Type             |
 | --- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| X-1 | `Σ_wTKN_on_stellar == total canonical tokens locked + burned on EVM/source chains`                                                | Backing          |
+| X-1 | `Σ_wTKN_on_stellar + Σ_released == total canonical tokens locked + burned on EVM/source chains`                                   | Backing          |
 | X-2 | Every `wrap` event on Stellar corresponds to exactly one `Locked` or `Burned` event on a source chain (within confirmation depth) | Causality        |
 | X-3 | Every `unwrap` event on Stellar results in exactly one `Released` event on the destination chain                                  | Causality        |
 | X-4 | The canonical API `/v1/markets` total-supply numbers equal the on-chain `lending_pool.total_deposit` summed across assets         | View consistency |
@@ -178,8 +178,15 @@
 > `vault.seize` atomically, and the controller cross-calls `wrapped_asset`,
 > `lending_pool`, `collateral_vault`, and `oracle`. C-1, C-2, C-3, C-5, B-7,
 > L-7, L-8, L-10 through L-16, Q-1 through Q-9, and W-3 through W-6 are all
-> closed. **Remaining coverage gap:** the cross-system invariants X-1, X-2, X-3
-> (backing / causality) have no automated test — they depend on the release
-> pipeline (unwrap → `Bridge.release`), which is not wired end-to-end yet (see
-> `docs/security.md`). Migration history:
-> [`contracts/BUILD_ENV_NOTES.md`](../contracts/BUILD_ENV_NOTES.md).
+> closed.
+>
+> **Cross-system invariants X-1…X-4** now have executable predicate tests in
+> `services/payment/src/invariants.ts` and
+> `services/payment/tests/invariants.test.ts` (including a 2,000-operation
+> randomised X-1 conservation test), and the `unwrap` → `Bridge.release`
+> pipeline that produces their inputs is wired in
+> `services/payment/src/{chains/stellar.ts,release/evmRelease.ts}` with state
+> machine tests. **Remaining gap:** no live reconciliation job feeds these
+> predicates from chain + database, and the release pipeline has not been
+> exercised against a deployed EVM `Bridge` (none exists yet). Migration
+> history: [`contracts/BUILD_ENV_NOTES.md`](../contracts/BUILD_ENV_NOTES.md).

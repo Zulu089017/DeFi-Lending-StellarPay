@@ -156,7 +156,7 @@ export interface ReleaseTypedValue {
   recipient: string; // EOA or contract receiving the released tokens
   amount: bigint; // amount of `token` to release
   stellarTxHash: string; // 32-byte hash of the Stellar Unwrap event
-  nonce: number | bigint; // replay-protection nonce (u256)
+  nonce: bigint; // replay-protection nonce (u256)
 }
 
 /** Sign a `Release` typed-data payload with each attester's secp256k1
