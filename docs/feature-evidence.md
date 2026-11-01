@@ -124,14 +124,14 @@
 
 ## 3. Off-chain services
 
-| Feature                                                          | Implementation                                                                  | Tests                                                                           | Verification                                                                                    |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Bridge middleware (attestation, event watching, release signing) | `services/payment/src/` (`attest/signer.ts`, `stellarPayment.ts`, `receipt.ts`) | `services/payment/tests/{signer,validation,index}.test.ts`                      | ✅ 17 tests passed (`pnpm --filter @stellar-payment-gateway/bridge test`), `tsc --noEmit` clean |
-| Transaction relayer                                              | `services/cron/src/`                                                            | `services/cron/tests/index.test.ts`                                             | ✅ 1 test passed, `tsc --noEmit` clean                                                          |
-| Event indexer (Postgres)                                         | `services/indexer/src/`                                                         | `services/indexer/tests/index.test.ts`                                          | ✅ 1 test passed, `tsc --noEmit` clean, `prisma generate` OK                                    |
-| Public REST + WebSocket API                                      | `apps/api/src/routes/`, `apps/api/src/index.ts`                                 | `apps/api/src/tests/{markets,quote,rate-limiter,positions,auth,events}.test.ts` | ✅ 30 tests passed, `tsc --noEmit` clean                                                        |
-| Notification service                                             | `services/notification/src/websocket.ts`                                        | none                                                                            | ⚠️ Source-verified only (no test file) — see backlog issue                                      |
-| Analytics service                                                | `services/analytics/`                                                           | none                                                                            | ⚠️ Source-verified only (no test file)                                                          |
+| Feature                                                          | Implementation                                                                  | Tests                                                                           | Verification                                                                                                         |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Bridge middleware (attestation, event watching, release signing) | `services/payment/src/` (`attest/signer.ts`, `stellarPayment.ts`, `receipt.ts`) | `services/payment/tests/{signer,validation,index}.test.ts`                      | ✅ 17 tests passed (`pnpm --filter @stellar-payment-gateway/bridge test`), `tsc --noEmit` clean                      |
+| Transaction relayer                                              | `services/cron/src/`                                                            | `services/cron/tests/index.test.ts`                                             | ✅ 1 test passed, `tsc --noEmit` clean                                                                               |
+| Event indexer (Postgres)                                         | `services/indexer/src/events/` (Soroban `getEvents` + EVM logs)                 | `services/indexer/tests/{decode,stream,evm,index}.test.ts`                      | ✅ **51 tests passed**, `tsc --noEmit` clean, `prisma generate` OK; live RPC smoke fetched the real retention window |
+| Public REST + WebSocket API                                      | `apps/api/src/routes/`, `apps/api/src/index.ts`                                 | `apps/api/src/tests/{markets,quote,rate-limiter,positions,auth,events}.test.ts` | ✅ 30 tests passed, `tsc --noEmit` clean                                                                             |
+| Notification service                                             | `services/notification/src/websocket.ts`                                        | none                                                                            | ⚠️ Source-verified only (no test file) — see backlog issue                                                           |
+| Analytics service                                                | `services/analytics/`                                                           | none                                                                            | ⚠️ Source-verified only (no test file)                                                                               |
 
 ## 4. Frontend
 
@@ -153,26 +153,28 @@
 
 ## 6. Cross-system / operational features
 
-| Feature                                       | Status                | Notes                                                                                 |
-| --------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------- |
-| X-1 wrapped-asset backing                     | ✅ Tested (predicate) | `checkX1Backing` + randomised conservation test; no live reconciliation job           |
-| X-2/X-3 wrap/unwrap causality                 | ✅ Tested (predicate) | `checkX2Causality` / `checkX3Causality` bijection tests; inputs from the new pipeline |
-| X-4 API ↔ on-chain view consistency           | ✅ Tested (predicate) | `checkX4MarketTotals` compared per asset; not yet wired to a scheduled job            |
-| Unwrap → `Bridge.release` pipeline            | ✅ Implemented        | Soroban `unwrap` watcher + EIP-712 release submitter; no live EVM deployment yet      |
-| Hosted dashboard (`app.spg.xyz`)              | ⛔ Not available      | No DNS record for `app.spg.xyz`; `spg.xyz` resolves to an unrelated third-party site  |
-| Hosted API (`api.spg.xyz`)                    | ⛔ Not available      | No DNS record                                                                         |
-| EVM bridge deployment (Sepolia / Amoy)        | ⛔ Not deployed       | Placeholder addresses only                                                            |
-| Smart-contract audit                          | 📋 Planned            | Target Q1 2027, quotes not yet received — see [`SECURITY.md`](../SECURITY.md)         |
-| Bug bounty                                    | 📋 Planned            | Post-audit, within 60 days of the report                                              |
-| `cargo audit` / Rust dependency advisory gate | 📋 Planned            | Not in CI yet                                                                         |
-| Load / chaos testing                          | 📋 Planned            | Listed in `docs/security.md`                                                          |
-| Live on-testnet DR dry-run                    | 📋 Planned            | Requires funded admin keys                                                            |
+| Feature                                       | Status               | Notes                                                                                                                                                                                                    |
+| --------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| X-1 wrapped-asset backing                     | ✅ Reconciler + test | `services/indexer/src/reconcile/rules.ts` (`checkX1`), run on a schedule; reads `wrapped_asset.total_supply()` by simulation. Live run on the deployed testnet contracts returns 0/0/0 (no activity yet) |
+| X-2/X-3 wrap/unwrap causality                 | ✅ Reconciler + test | `checkX2`/`checkX3` over indexed events + EVM `Locked`/`Burned`/`Released` rows; persisted per run                                                                                                       |
+| X-4 API ↔ on-chain view consistency           | ✅ Reconciler + test | `checkX4` compares API (when `API_URL` is set) or DB totals with `lending_pool.total_deposit`/`total_borrow` via simulation                                                                              |
+| Reconciliation audit trail                    | ✅ Implemented       | `ReconciliationRun` + `ReconciliationMismatch` tables, `GET /reconcile/runs`, `POST /reconcile/run`, metrics, optional webhook alert                                                                     |
+| Unwrap → `Bridge.release` pipeline            | ✅ Implemented       | Soroban `unwrap` watcher + EIP-712 release submitter; no live EVM deployment yet                                                                                                                         |
+| Hosted dashboard (`app.spg.xyz`)              | ⛔ Not available     | No DNS record for `app.spg.xyz`; `spg.xyz` resolves to an unrelated third-party site                                                                                                                     |
+| Hosted API (`api.spg.xyz`)                    | ⛔ Not available     | No DNS record                                                                                                                                                                                            |
+| EVM bridge deployment (Sepolia / Amoy)        | ⛔ Not deployed      | Placeholder addresses only                                                                                                                                                                               |
+| Smart-contract audit                          | 📋 Planned           | Target Q1 2027, quotes not yet received — see [`SECURITY.md`](../SECURITY.md)                                                                                                                            |
+| Bug bounty                                    | 📋 Planned           | Post-audit, within 60 days of the report                                                                                                                                                                 |
+| `cargo audit` / Rust dependency advisory gate | 📋 Planned           | Not in CI yet                                                                                                                                                                                            |
+| Load / chaos testing                          | 📋 Planned           | Listed in `docs/security.md`                                                                                                                                                                             |
+| Live on-testnet DR dry-run                    | 📋 Planned           | Requires funded admin keys                                                                                                                                                                               |
 
 ## 7. How to re-verify this inventory
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm typecheck && pnpm lint && pnpm test
+node scripts/verify-deployments.mjs   # reads manifest.json, queries Stellar RPC (read-only)
 pnpm --filter @stellar-payment-gateway/bridge  exec tsc --noEmit && pnpm --filter @stellar-payment-gateway/bridge  test
 pnpm --filter @stellar-payment-gateway/relayer exec tsc --noEmit && pnpm --filter @stellar-payment-gateway/relayer test
 pnpm --filter @stellar-payment-gateway/indexer exec tsc --noEmit && pnpm --filter @stellar-payment-gateway/indexer test

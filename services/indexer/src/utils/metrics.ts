@@ -31,6 +31,20 @@ export const indexerErrorsTotal = new Counter({
   registers: [registry],
 });
 
+export const reconcileRunsTotal = new Counter({
+  name: "indexer_reconcile_runs_total",
+  help: "Reconciliation passes by outcome",
+  labelNames: ["status"] as const,
+  registers: [registry],
+});
+
+export const reconcileMismatchesTotal = new Counter({
+  name: "indexer_reconcile_mismatches_total",
+  help: "Cross-system invariant mismatches detected",
+  labelNames: ["invariant", "subject"] as const,
+  registers: [registry],
+});
+
 export function metricsContentType(): string {
   return registry.contentType;
 }

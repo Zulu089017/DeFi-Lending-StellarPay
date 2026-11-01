@@ -186,7 +186,21 @@
 > randomised X-1 conservation test), and the `unwrap` → `Bridge.release`
 > pipeline that produces their inputs is wired in
 > `services/payment/src/{chains/stellar.ts,release/evmRelease.ts}` with state
-> machine tests. **Remaining gap:** no live reconciliation job feeds these
-> predicates from chain + database, and the release pipeline has not been
-> exercised against a deployed EVM `Bridge` (none exists yet). Migration
+> machine tests.
+>
+> **Live reconciliation (2026-11-01).** `services/indexer/src/reconcile/`
+> evaluates X-1…X-4 against real inputs: on-chain views are read with
+> `simulateTransaction` (`wrapped_asset.total_supply()`,
+> `lending_pool.total_deposit/total_borrow`), and the indexed event tables
+> supply the `wrap`/`unwrap`/`Locked`/`Burned`/`Released` rows. Runs are
+> scheduled, persisted (`ReconciliationRun` + `ReconciliationMismatch`), exposed
+> at `GET /reconcile/latest` and counted in Prometheus. Checks whose inputs are
+> missing are reported as **skipped**, never as passing.
+>
+> **Remaining gaps:** (1) the reconciler has not yet run against a deployment
+> with real activity — the deployed testnet contracts report zero supply and no
+> EVM `Bridge` is deployed, so the checks currently pass on empty state; (2) X-1
+> is an aggregate token check, since the indexer does not model a per-token
+> mapping between EVM tokens and wrapped Stellar assets; (3) the release
+> pipeline still has not been exercised against a live `Bridge`. Migration
 > history: [`contracts/BUILD_ENV_NOTES.md`](../contracts/BUILD_ENV_NOTES.md).

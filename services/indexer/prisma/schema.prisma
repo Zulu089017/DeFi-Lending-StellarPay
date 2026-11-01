@@ -14,21 +14,29 @@ model Cursor {
   updatedAt   DateTime @updatedAt
 }
 
+// `id` is the Soroban RPC event id (`<toid>-<eventOrder>`): globally unique and
+// stable, so replaying a page after a crash cannot duplicate a row. One
+// transaction can emit several events (and several unwrap operations), so the
+// natural key is (txHash, nonce) — NOT txHash alone, which silently collapsed
+// multiple unwraps in the same transaction.
 model WrapEvent {
-  id          String   @id @default(cuid())
-  txHash      String   @unique
+  id          String   @id
+  txHash      String
   ledger      BigInt
   chainId     Int
   sourceAddr  String
   to          String
   amount      BigInt
   salt        String
+  nonce       BigInt
   createdAt   DateTime @default(now())
+
+  @@unique([txHash, nonce])
 }
 
 model UnwrapEvent {
-  id          String   @id @default(cuid())
-  txHash      String   @unique
+  id          String   @id
+  txHash      String
   ledger      BigInt
   user        String
   amount      BigInt
@@ -37,6 +45,8 @@ model UnwrapEvent {
   nonce       String
   released    Boolean  @default(false)
   createdAt   DateTime @default(now())
+
+  @@unique([txHash, nonce])
 }
 
 model WTokenEvent {
@@ -52,10 +62,12 @@ model WTokenEvent {
 }
 
 model LendingEvent {
-  id        String   @id @default(cuid())
+  id        String   @id
   txHash    String
   logIndex  Int
-  type      String // supply | borrow | repay | withdraw | liquidate
+  // supply | borrow | repay | withdraw | liquidate |
+  // collateral_deposit | collateral_withdraw
+  type      String
   user      String
   asset     String
   amount    BigInt
@@ -73,9 +85,48 @@ model BridgeEvent {
   sender    String
   token     String
   amount    BigInt
+  /// `Locked`/`Burned`: the Stellar destination encoded as bytes32.
   stellarDest String?
+  /// `Locked`/`Burned`: the replay-protection salt.
   salt      String?
+  /// `Released`: the Stellar tx hash the attesters signed over (bytes32).
+  stellarTxHash String?
+  /// `Released`: the unwrap nonce (bytes32 hex).
+  nonce     String?
   createdAt DateTime @default(now())
 
   @@unique([chain, txHash, logIndex])
+  @@index([type])
+}
+
+// ──────────────────────── Reconciliation (X-1…X-4) ────────────────────────
+
+/// One scheduled or on-demand reconciliation pass. Keeping the history makes
+/// every mismatch auditable after the fact instead of only visible in logs.
+model ReconciliationRun {
+  id            String   @id @default(cuid())
+  startedAt     DateTime @default(now())
+  finishedAt    DateTime?
+  status        String // running | ok | mismatch | error
+  checksRun     Int      @default(0)
+  mismatchCount Int      @default(0)
+  errorMessage  String?
+  /// Full report snapshot (JSON) so a run can be reviewed without re-querying.
+  report        Json?
+  mismatches    ReconciliationMismatch[]
+}
+
+model ReconciliationMismatch {
+  id        String   @id @default(cuid())
+  runId     String
+  run       ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  invariant String // X-1 | X-2 | X-3 | X-4
+  subject   String
+  expected  String
+  actual    String
+  delta     String?
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([runId, invariant])
 }

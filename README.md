@@ -81,27 +81,27 @@ makes an always-on, permissionless liquidation engine practical.
 
 ## Feature overview
 
-| Feature                                               | Where it lives                                                   | Tests                                         | Status                                                              |
-| ----------------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------- |
-| Supply / withdraw (share-priced)                      | `contracts/lending/soroban`                                      | `invariant_*` + unit tests                    | Implemented, tested                                                 |
-| Borrow / repay (index-based debt)                     | `contracts/lending/soroban`                                      | `invariant_*` + unit tests                    | Implemented, tested                                                 |
-| Collateral accounting (vault positions)               | `contracts/collateral/soroban`                                   | `invariant_*` + unit tests                    | Implemented, tested                                                 |
-| Health factor + LTV enforcement                       | `contracts/lending/soroban`                                      | property test `prop_health_factor_monotonic`  | Implemented, tested                                                 |
-| Interest accrual (utilisation curve with kink)        | `contracts/lending/soroban`                                      | unit + property tests                         | Implemented, tested                                                 |
-| Permissionless liquidation (close factor, bonus, fee) | `contracts/liquidation/soroban`                                  | `invariant_Q*` + unit tests                   | Implemented, tested                                                 |
-| Oracle (multi-publisher, staleness heartbeat)         | `contracts/oracle/soroban`                                       | `invariant_O*`                                | Implemented, tested                                                 |
-| Bridge attestation pipeline (ed25519, 2-of-3)         | `contracts/lending/controller`, `services/payment`               | Rust + TS signer cross-language digest canary | Implemented, tested                                                 |
-| Replay protection (salt reuse → revert)               | `contracts/lending/controller`, `Bridge.sol`                     | `invariant_C2`, `B-1`                         | Implemented, tested                                                 |
-| EIP-712 domain separation on EVM release              | `contracts/lending/evm/Bridge.sol`                               | `B-7` regression test                         | Implemented, tested                                                 |
-| Mint rate circuit breaker + pause surface             | `contracts/lending/controller`                                   | `invariant_C3`, `C4`, `C5`, `B-6`             | Implemented, tested                                                 |
-| Off-chain relayer / watcher                           | `services/cron`                                                  | vitest                                        | Implemented, tested                                                 |
-| Event indexer (Postgres)                              | `services/indexer`                                               | vitest                                        | Implemented, tested                                                 |
-| Public REST + WebSocket API                           | `apps/api`                                                       | vitest (30 tests)                             | Implemented, tested                                                 |
-| Next.js dashboard                                     | `apps/web`                                                       | vitest (3 tests) + `next lint`                | Implemented, tested                                                 |
-| TypeScript SDK                                        | `packages/sdk`                                                   | vitest (7 tests)                              | Implemented, tested                                                 |
-| Unwrap → EVM `Bridge.release` pipeline                | `services/payment` (`events/unwrap.ts`, `release/evmRelease.ts`) | vitest (state machine + EIP-712)              | Implemented, unit-tested; **not run against a live EVM deployment** |
-| Cross-system invariants X-1…X-4                       | `services/payment/src/invariants.ts`                             | vitest incl. randomised X-1 flow              | Implemented, unit-tested; no live reconciliation job                |
-| Mainnet deployment, audit, bug bounty                 | —                                                                | —                                             | **Planned**                                                         |
+| Feature                                               | Where it lives                                                         | Tests                                                   | Status                                                                |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
+| Supply / withdraw (share-priced)                      | `contracts/lending/soroban`                                            | `invariant_*` + unit tests                              | Implemented, tested                                                   |
+| Borrow / repay (index-based debt)                     | `contracts/lending/soroban`                                            | `invariant_*` + unit tests                              | Implemented, tested                                                   |
+| Collateral accounting (vault positions)               | `contracts/collateral/soroban`                                         | `invariant_*` + unit tests                              | Implemented, tested                                                   |
+| Health factor + LTV enforcement                       | `contracts/lending/soroban`                                            | property test `prop_health_factor_monotonic`            | Implemented, tested                                                   |
+| Interest accrual (utilisation curve with kink)        | `contracts/lending/soroban`                                            | unit + property tests                                   | Implemented, tested                                                   |
+| Permissionless liquidation (close factor, bonus, fee) | `contracts/liquidation/soroban`                                        | `invariant_Q*` + unit tests                             | Implemented, tested                                                   |
+| Oracle (multi-publisher, staleness heartbeat)         | `contracts/oracle/soroban`                                             | `invariant_O*`                                          | Implemented, tested                                                   |
+| Bridge attestation pipeline (ed25519, 2-of-3)         | `contracts/lending/controller`, `services/payment`                     | Rust + TS signer cross-language digest canary           | Implemented, tested                                                   |
+| Replay protection (salt reuse → revert)               | `contracts/lending/controller`, `Bridge.sol`                           | `invariant_C2`, `B-1`                                   | Implemented, tested                                                   |
+| EIP-712 domain separation on EVM release              | `contracts/lending/evm/Bridge.sol`                                     | `B-7` regression test                                   | Implemented, tested                                                   |
+| Mint rate circuit breaker + pause surface             | `contracts/lending/controller`                                         | `invariant_C3`, `C4`, `C5`, `B-6`                       | Implemented, tested                                                   |
+| Off-chain relayer / watcher                           | `services/cron`                                                        | vitest                                                  | Implemented, tested                                                   |
+| Event indexer (Postgres)                              | `services/indexer`                                                     | vitest + live RPC smoke                                 | Implemented, tested (Soroban `getEvents` + EVM logs)                  |
+| Public REST + WebSocket API                           | `apps/api`                                                             | vitest (30 tests)                                       | Implemented, tested                                                   |
+| Next.js dashboard                                     | `apps/web`                                                             | vitest (3 tests) + `next lint`                          | Implemented, tested                                                   |
+| TypeScript SDK                                        | `packages/sdk`                                                         | vitest (7 tests)                                        | Implemented, tested                                                   |
+| Unwrap → EVM `Bridge.release` pipeline                | `services/payment` (`events/unwrap.ts`, `release/evmRelease.ts`)       | vitest (state machine + EIP-712)                        | Implemented, unit-tested; **not run against a live EVM deployment**   |
+| Cross-system invariants X-1…X-4                       | `services/payment/src/invariants.ts`, `services/indexer/src/reconcile` | vitest incl. randomised X-1 flow + scheduled reconciler | Implemented; reconciler runs on a schedule and persists audit history |
+| Mainnet deployment, audit, bug bounty                 | —                                                                      | —                                                       | **Planned**                                                           |
 
 A per-feature breakdown (implementation → tests → config → verification status)
 is in [`docs/feature-evidence.md`](docs/feature-evidence.md).
@@ -252,7 +252,7 @@ placeholders — never real keys.
 | `apps/api/.env.example`         | `DATABASE_URL=postgresql://spg:spg@localhost:5432/spg`, `STELLAR_RPC=https://horizon-testnet.stellar.org`, `STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015`, `STELLAR_CONTROLLER=<lending_controller contract id>`, `PORT=4000`, `CORS_ORIGINS=*`                                                        |
 | `apps/web/.env.example`         | `NEXT_PUBLIC_API_URL=http://localhost:4000`, `NEXT_PUBLIC_STELLAR_CONTROLLER=<contract id>`                                                                                                                                                                                                                            |
 | `services/payment/.env.example` | `ETHEREUM_RPC`, `POLYGON_RPC`, `SOLANA_RPC`, `RELAYER_SECRET` (**secret key — never commit**), `ATTESTER_KEYS` / `ATTESTER_KEYS_FILE`, `ATTESTER_THRESHOLD=2`, `STELLAR_SOROBAN_RPC` (unwrap watcher), `EVM_ATTESTER_KEYS` / `_FILE`, `ETHEREUM_/POLYGON_RELEASE_TOKEN`, `ETHEREUM_/POLYGON_RELAYER_PK` (release path) |
-| `services/indexer/.env.example` | `DATABASE_URL`, `STELLAR_RPC`, `STELLAR_CONTROLLER`                                                                                                                                                                                                                                                                    |
+| `services/indexer/.env.example` | `DATABASE_URL`, `SOROBAN_RPC`, `STELLAR_EVENT_CONTRACTS`, `STELLAR_POOL`, `RECONCILE_SOURCE_ACCOUNT`, `RECONCILE_WRAPPED_ASSETS`                                                                                                                                                                                       |
 | `services/cron/.env.example`    | `DATABASE_URL`, source-chain RPCs, `RELAYER_SECRET`                                                                                                                                                                                                                                                                    |
 
 Contract IDs come from
@@ -369,11 +369,11 @@ commands:
 | Config formatting         | `pnpm exec prettier --check "**/*.{json,md,yml,yaml}" …`                | ✅ pass                                                                    |
 | Type check (all packages) | `pnpm typecheck`                                                        | ✅ 12/12 turbo tasks                                                       |
 | Lint                      | `pnpm lint`                                                             | ✅ 2/2 turbo tasks (warnings only, 0 errors)                               |
-| Unit tests (all packages) | `pnpm test`                                                             | ✅ 35/35 turbo tasks, **94 tests passed**                                  |
+| Unit tests (all packages) | `pnpm test`                                                             | ✅ 35/35 turbo tasks, **144 tests passed**                                 |
 | API service               | `pnpm --filter @stellar-payment-gateway/api exec tsc --noEmit` / `test` | ✅ 30 tests                                                                |
 | Bridge service            | `…/bridge exec tsc --noEmit` / `test`                                   | ✅ 52 tests                                                                |
 | SDK                       | `…/sdk exec tsc --noEmit` / `test` / `build`                            | ✅ 7 tests                                                                 |
-| Indexer / Relayer         | `…/indexer`, `…/relayer`                                                | ✅ 1 test each                                                             |
+| Indexer / Relayer         | `…/indexer`, `…/relayer`                                                | ✅ **51** indexer tests (decoders, paging, dedupe, X-1…X-4), 1 relayer     |
 | Dashboard (Next.js)       | `tsc --noEmit`, `test`, `next lint`, `build`                            | ✅ 3 tests, lint clean, build OK                                           |
 | EVM contracts             | `npx hardhat compile` / `npx hardhat test` (in `contracts/`)            | ✅ 17 tests passing                                                        |
 | Soroban formatting        | `cargo fmt --all -- --check` (Rust 1.91.0)                              | ✅ clean                                                                   |
@@ -397,6 +397,7 @@ pnpm typecheck && pnpm lint && pnpm test
 pnpm exec prettier --check "**/*.{json,md,yml,yaml}" "!**/node_modules/**" "!**/dist/**" "!**/target/**"
 (cd contracts && npm ci && npx hardhat compile && npx hardhat test)
 (cd contracts && cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --workspace --locked)
+node scripts/verify-deployments.mjs   # checks every manifest contract id against Stellar RPC (read-only)
 ```
 
 ## Security, risk and audit status
@@ -414,10 +415,12 @@ pnpm exec prettier --check "**/*.{json,md,yml,yaml}" "!**/node_modules/**" "!**/
     `Bridge` is deployed (see [Known limitations](#known-limitations)). Its
     end-to-end correctness therefore rests on the Solidity test suite plus the
     unit tests, not on a cross-chain run.
-  - Cross-system invariants **X-1…X-4** have executable predicate tests
-    (`services/payment/src/invariants.ts`), but nothing yet feeds them live
-    chain + database data on a schedule; a reconciliation job remains to be
-    built.
+  - Cross-system invariants **X-1…X-4** now have both predicate tests and a
+    scheduled reconciler (`services/indexer/src/reconcile/`) that reads the
+    on-chain views via `simulateTransaction` and persists every run plus each
+    mismatch. It has **not** yet run against a deployment with real activity —
+    the deployed testnet contracts show zero supply/borrow, and no EVM `Bridge`
+    is deployed, so the checks currently pass on empty state.
   - `pnpm audit` reports dev-dependency advisories in the `api` package
     (transitive `testcontainers`/`vitest` chain); the audit step in CI is
     advisory (`|| true`) until those majors can be bumped.

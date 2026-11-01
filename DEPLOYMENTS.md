@@ -8,31 +8,50 @@
 >
 > **Last deployment recorded in the repository:** 2026-08-09
 
-## Verification status (checked 2026-10-20)
+## Verification status (checked 2026-11-01)
 
-| Item                                                                           | Status               | How it was checked                                                                                                                                                                                                                                                                                                                             |
-| ------------------------------------------------------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admin account `GA6ZXO…PJEZY` exists on Stellar testnet                         | ✅ verified          | Horizon testnet API: `GET /accounts/{admin}` → `200 OK`                                                                                                                                                                                                                                                                                        |
-| 7 Soroban contracts were created on testnet on 2026-08-09                      | ✅ verified          | Horizon testnet API: the account shows **6 `UploadContractWasm` + 7 `CreateContract` + 7 `InvokeContract`** host-function operations, all `transaction_successful: true`                                                                                                                                                                       |
-| The **exact contract IDs in the table below** are the ones created in that run | ⚠️ **not confirmed** | Re-deriving the contract IDs from the on-chain salts (CAP-46) does **not** reproduce the seven IDs below, and Horizon's `/contracts/{id}` returns `404` for all of them. **The maintainer should re-verify each ID with `stellar contract info <id> --network testnet` (or the Soroban RPC `getLedgerEntries`) before publishing them again.** |
-| `app.spg.xyz` (hosted dashboard)                                               | ❌ **not available** | DNS: no record for `app.spg.xyz`. `spg.xyz` itself resolves to an unrelated third-party site, so no hosted demo is claimed.                                                                                                                                                                                                                    |
-| `api.spg.xyz` (hosted API)                                                     | ❌ not available     | DNS: no record                                                                                                                                                                                                                                                                                                                                 |
-| `Bridge` on Sepolia / Amoy                                                     | ⛔ not deployed      | Addresses below are placeholders; the contract compiles and its 17 Hardhat tests pass                                                                                                                                                                                                                                                          |
+Verification is reproducible: `node scripts/verify-deployments.mjs` reads
+`packages/sdk/src/manifest.json` and queries Stellar RPC (`getLedgerEntries` for
+the contract-instance key). It is read-only and never signs anything. Pass
+`--wasm-dir contracts/target/wasm32v1-none/release` after
+`cargo build --workspace --target wasm32v1-none --release` to compare the
+installed code against a local build.
+
+| Item                                                      | Status          | How it was checked                                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admin account `GA6ZXO…PJEZY` exists on Stellar testnet    | ✅ verified     | Horizon testnet API: `GET /accounts/{admin}` → `200 OK`                                                                                                                                                                                                                            |
+| 7 Soroban contracts were created on testnet on 2026-08-09 | ✅ verified     | Horizon testnet API: the account shows **6 `UploadContractWasm` + 7 `CreateContract` + 7 `InvokeContract`** host-function operations, all `transaction_successful: true`                                                                                                           |
+| The **exact contract IDs below exist in ledger state**    | ✅ verified     | Soroban RPC `getLedgerEntries` returns a contract instance for all 7 IDs; `lastModifiedLedgerSeq` 4057465–4057471 (sequential, one deployment run). Horizon has no `/contracts/{id}` route — the earlier `404` was the wrong endpoint, not a missing contract.                     |
+| Deployed WASM equals the current `main` build             | ❌ **no**       | `cargo build --workspace --target wasm32v1-none --release` → sha256 differs for all 6 contract crates (e.g. controller deployed `a959cbdc…` vs local `844c37d5…`). **The addresses host older code**; redeploy (bump the salt label) before claiming parity with this source tree. |
+| `app.spg.xyz` (hosted dashboard)                          | ❌ unavailable  | DNS: no record for `app.spg.xyz`. `spg.xyz` resolves to an unrelated third-party site, so no hosted demo is claimed.                                                                                                                                                               |
+| `api.spg.xyz` (hosted API)                                | ❌ unavailable  | DNS: no record                                                                                                                                                                                                                                                                     |
+| `Bridge` on Sepolia / Amoy                                | ⛔ not deployed | Addresses below are placeholders; the contract compiles and its 17 Hardhat tests pass                                                                                                                                                                                              |
 
 Run the local stack instead of a hosted demo — see
 [`README.md` → Setup](README.md#setup).
 
 ## Stellar Testnet
 
-| Contract               | Address                                                    | Explorer                                                                                                                    |
-| ---------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `wrapped_asset` (wETH) | `CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL) |
-| `wrapped_usdc` (wUSDC) | `CCVDMRJYATZE6Y4C74PA4UZREV3TWASUL34XKYJ2RJB226ZZOJYAK67M` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CCVDMRJYATZE6Y4C74PA4UZREV3TWASUL34XKYJ2RJB226ZZOJYAK67M) |
-| `oracle`               | `CDHO2OMTEDKURE4EWNP3QTDCGO7SGBT46BYAPJDZPR26YQPUN2D6IK7K` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDHO2OMTEDKURE4EWNP3QTDCGO7SGBT46BYAPJDZPR26YQPUN2D6IK7K) |
-| `collateral_vault`     | `CDZW33FW2PZKZGUNHOMR4U5DCSRUBI6VREZFHVMW6AULABVKSGFB7YFL` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDZW33FW2PZKZGUNHOMR4U5DCSRUBI6VREZFHVMW6AULABVKSGFB7YFL) |
-| `lending_pool`         | `CAC5WYMZJIQKPFM6FRE6GHB37MQYGBBFKOVPJ7RMV46Z3II2VVBGS5FO` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAC5WYMZJIQKPFM6FRE6GHB37MQYGBBFKOVPJ7RMV46Z3II2VVBGS5FO) |
-| `liquidation`          | `CD5SQP6NAG6RDPYV5FFX2A4JKSTN5D2HQH5XOVCG5X63CEWSQTIUZ4WY` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CD5SQP6NAG6RDPYV5FFX2A4JKSTN5D2HQH5XOVCG5X63CEWSQTIUZ4WY) |
-| `lending_controller`   | `CBNG3R6J2S4ZP7OEKIOS2JRVOJWG6YA56UR6N4Z4ZWIOH6LEX6R4NI2X` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBNG3R6J2S4ZP7OEKIOS2JRVOJWG6YA56UR6N4Z4ZWIOH6LEX6R4NI2X) |
+| Contract               | Address                                                    | Ledger  | Installed WASM (sha256)                                            | Explorer                                                                                                                    |
+| ---------------------- | ---------------------------------------------------------- | ------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `wrapped_asset` (wETH) | `CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL` | 4057465 | `98e662b3b98a378ca7bacd1267e29bc56a2bb343427b4384323a9046dab35762` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL) |
+| `wrapped_usdc` (wUSDC) | `CCVDMRJYATZE6Y4C74PA4UZREV3TWASUL34XKYJ2RJB226ZZOJYAK67M` | 4057466 | `98e662b3b98a378ca7bacd1267e29bc56a2bb343427b4384323a9046dab35762` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CCVDMRJYATZE6Y4C74PA4UZREV3TWASUL34XKYJ2RJB226ZZOJYAK67M) |
+| `oracle`               | `CDHO2OMTEDKURE4EWNP3QTDCGO7SGBT46BYAPJDZPR26YQPUN2D6IK7K` | 4057467 | `33c0a71f0be73c335fafaee4a651be590f61c6e1c10c25778c3d69aecf7162cc` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDHO2OMTEDKURE4EWNP3QTDCGO7SGBT46BYAPJDZPR26YQPUN2D6IK7K) |
+| `collateral_vault`     | `CDZW33FW2PZKZGUNHOMR4U5DCSRUBI6VREZFHVMW6AULABVKSGFB7YFL` | 4057468 | `42812ae0680594b4c7d9456b6dc1a6dfeaabe0af2c5d50d112248ad1faa07b32` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDZW33FW2PZKZGUNHOMR4U5DCSRUBI6VREZFHVMW6AULABVKSGFB7YFL) |
+| `lending_pool`         | `CAC5WYMZJIQKPFM6FRE6GHB37MQYGBBFKOVPJ7RMV46Z3II2VVBGS5FO` | 4057469 | `6797155921a7e804d7b823cb8dba8b21b91f99f08447f846a79391f2ac857426` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAC5WYMZJIQKPFM6FRE6GHB37MQYGBBFKOVPJ7RMV46Z3II2VVBGS5FO) |
+| `liquidation`          | `CD5SQP6NAG6RDPYV5FFX2A4JKSTN5D2HQH5XOVCG5X63CEWSQTIUZ4WY` | 4057470 | `0f1ea03adee0cf5d1da93f7a2617deec7f8fd57af4eb2d97e67fb1dfea30fe12` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CD5SQP6NAG6RDPYV5FFX2A4JKSTN5D2HQH5XOVCG5X63CEWSQTIUZ4WY) |
+| `lending_controller`   | `CBNG3R6J2S4ZP7OEKIOS2JRVOJWG6YA56UR6N4Z4ZWIOH6LEX6R4NI2X` | 4057471 | `a959cbdc5f9c107231bb3970863d3f0794f95b70b43c7e74b9694539d1f81eee` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBNG3R6J2S4ZP7OEKIOS2JRVOJWG6YA56UR6N4Z4ZWIOH6LEX6R4NI2X) |
+
+The `lending_controller` instance stores its wired dependencies as instance
+keys: `AdminSet`, `Bridge`, `CollateralVault`, `LendingPool`, `Oracle`,
+`WrappedAsset` — i.e. the cross-contract configuration described in
+`docs/architecture.md` is present on-chain.
+
+**RPC event retention:** Soroban RPC keeps contract events for roughly 7 days
+(`ledgerRetentionWindow` ≈ 120,960 ledgers). The controller has emitted **no
+events inside the current retention window**, so event shapes are asserted by
+unit tests against the `#[contractevent]` definitions rather than by live data.
+Any indexer starting from scratch can only backfill inside that window.
 
 The same seven IDs are the source of truth for the code:
 `packages/sdk/src/manifest.json` → `stellar.contracts`.

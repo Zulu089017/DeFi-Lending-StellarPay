@@ -11,21 +11,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Mirrors services/indexer/prisma/schema.prisma. A Stellar transaction can
+// contain more than one wrap/unwrap, so the natural key includes the nonce;
+// keying by txHash alone dropped every event after the first in a tx.
 model WrapEvent {
   id          String   @id
-  txHash      String   @unique
+  txHash      String
   ledger      BigInt
   chainId     Int
   sourceAddr  String
   to          String
   amount      BigInt
   salt        String
+  nonce       BigInt   @default(0)
   createdAt   DateTime
+
+  @@unique([txHash, nonce])
 }
 
 model UnwrapEvent {
   id          String   @id
-  txHash      String   @unique
+  txHash      String
   ledger      BigInt
   user        String
   amount      BigInt
@@ -34,6 +40,8 @@ model UnwrapEvent {
   nonce       String
   released    Boolean
   createdAt   DateTime
+
+  @@unique([txHash, nonce])
 }
 
 model LendingEvent {
@@ -60,6 +68,8 @@ model BridgeEvent {
   amount    BigInt
   stellarDest String?
   salt      String?
+  stellarTxHash String?
+  nonce     String?
   createdAt DateTime
 
   @@unique([chain, txHash, logIndex])
