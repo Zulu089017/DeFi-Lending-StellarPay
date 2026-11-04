@@ -6,87 +6,198 @@
 > `packages/sdk/src/manifest.json`, `stellar.toml` and
 > `apps/web/public/.well-known/stellar.toml`.
 >
-> **Last deployment recorded in the repository:** 2026-08-09
+> **Current deployment:** 2026-11-04 (`v2`, deployed from `main`) **Previous
+> deployment:** 2026-08-09 (`v1`, superseded — preserved below)
 
-## Verification status (checked 2026-11-01)
+## Current deployment — 2026-11-04
 
-Verification is reproducible: `node scripts/verify-deployments.mjs` reads
-`packages/sdk/src/manifest.json` and queries Stellar RPC (`getLedgerEntries` for
-the contract-instance key). It is read-only and never signs anything. Pass
-`--wasm-dir contracts/target/wasm32v1-none/release` after
-`cargo build --workspace --target wasm32v1-none --release` to compare the
-installed code against a local build.
+Deployed from this working tree with Rust **1.91.0** / `wasm32v1-none` and
+`soroban-sdk 27.0.6`, using a **new admin keypair** (so every contract ID is new
+and the 2026-08-09 deployment is untouched on-chain).
 
-| Item                                                      | Status          | How it was checked                                                                                                                                                                                                                                                                 |
-| --------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admin account `GA6ZXO…PJEZY` exists on Stellar testnet    | ✅ verified     | Horizon testnet API: `GET /accounts/{admin}` → `200 OK`                                                                                                                                                                                                                            |
-| 7 Soroban contracts were created on testnet on 2026-08-09 | ✅ verified     | Horizon testnet API: the account shows **6 `UploadContractWasm` + 7 `CreateContract` + 7 `InvokeContract`** host-function operations, all `transaction_successful: true`                                                                                                           |
-| The **exact contract IDs below exist in ledger state**    | ✅ verified     | Soroban RPC `getLedgerEntries` returns a contract instance for all 7 IDs; `lastModifiedLedgerSeq` 4057465–4057471 (sequential, one deployment run). Horizon has no `/contracts/{id}` route — the earlier `404` was the wrong endpoint, not a missing contract.                     |
-| Deployed WASM equals the current `main` build             | ❌ **no**       | `cargo build --workspace --target wasm32v1-none --release` → sha256 differs for all 6 contract crates (e.g. controller deployed `a959cbdc…` vs local `844c37d5…`). **The addresses host older code**; redeploy (bump the salt label) before claiming parity with this source tree. |
-| `app.spg.xyz` (hosted dashboard)                          | ❌ unavailable  | DNS: no record for `app.spg.xyz`. `spg.xyz` resolves to an unrelated third-party site, so no hosted demo is claimed.                                                                                                                                                               |
-| `api.spg.xyz` (hosted API)                                | ❌ unavailable  | DNS: no record                                                                                                                                                                                                                                                                     |
-| `Bridge` on Sepolia / Amoy                                | ⛔ not deployed | Addresses below are placeholders; the contract compiles and its 17 Hardhat tests pass                                                                                                                                                                                              |
+**Admin:** `GC3IFSRJGLDW3LRFLTK7XA7QYZDSGTP35BD6J3PTSE3FU5BVKWA7OUPY`
+
+### Soroban contracts (7)
+
+| Contract               | Address                                                    | Ledger  | Installed WASM (sha256)                                            | Explorer                                                                                                                    |
+| ---------------------- | ---------------------------------------------------------- | ------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `wrapped_asset` (wETH) | `CBEU47GCJ2IK3RBR2Y7Z5XVYXFIEFAKPWIO5B4IQEIZOICYM4BW6MJYC` | 5551410 | `bb1a07685315a49d1377ecf8194c88d640da34e65128789f1d3597a7dbff40fc` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBEU47GCJ2IK3RBR2Y7Z5XVYXFIEFAKPWIO5B4IQEIZOICYM4BW6MJYC) |
+| `wrapped_usdc` (wUSDC) | `CA6IYLXTUJ57X2EAZYMYN6D4EM6TE62MA72NSBHVDFVWSVWQULPO2NSO` | 5551412 | `bb1a07685315a49d1377ecf8194c88d640da34e65128789f1d3597a7dbff40fc` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CA6IYLXTUJ57X2EAZYMYN6D4EM6TE62MA72NSBHVDFVWSVWQULPO2NSO) |
+| `oracle`               | `CBXHLNCRHAO6JPKEBKKKRCQUN6FQ4PAYB7FJH7BEMGANELPVBEAN34WU` | 5551414 | `70e8c5c71bd31caa70c95b0414141eb9bb36dbdc5160caee736451a5c2ac45d3` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBXHLNCRHAO6JPKEBKKKRCQUN6FQ4PAYB7FJH7BEMGANELPVBEAN34WU) |
+| `collateral_vault`     | `CC5Z2WNZD2VSAC6R2HGIHJIZY5LKSGT74SQ5SLBCHGPUS4N4G56USOXH` | 5551416 | `b99dc9e77fd69b8f5bb9033a60c17a58987a290d3075df76acab08f928470dc9` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CC5Z2WNZD2VSAC6R2HGIHJIZY5LKSGT74SQ5SLBCHGPUS4N4G56USOXH) |
+| `lending_pool`         | `CCPTC2QKVXFA25CJRRQD7NZZ5WSA27EBWWJH4MFFKSM27SKNKB3H5JQL` | 5551418 | `93b934c6196871022367e120a23cab81d26c9c82a0bba8164bdc45856db9d85c` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CCPTC2QKVXFA25CJRRQD7NZZ5WSA27EBWWJH4MFFKSM27SKNKB3H5JQL) |
+| `liquidation`          | `CDG34DGA3GSYVGDIEAUJVLTX2XOD2UDAEPFBH2FGG3VUEFEQVFQR5RX7` | 5551420 | `697df92e91c2f8a03e43fd3880cb69ec4ed14e0b0944c9f795f1c771c36095f6` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDG34DGA3GSYVGDIEAUJVLTX2XOD2UDAEPFBH2FGG3VUEFEQVFQR5RX7) |
+| `lending_controller`   | `CDEVH2BOD4SMPNEORPO33A47PWN6A2IBAUETSF6U4XJ6FZ7IMMVMYZUI` | 5551423 | `844c37d59213e602a6777eee1e38e4c8bcd8b8af4dc1bbfd5a7f130542c9a81f` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDEVH2BOD4SMPNEORPO33A47PWN6A2IBAUETSF6U4XJ6FZ7IMMVMYZUI) |
+
+`wrapped_asset` and `wrapped_usdc` are two instances of the **same** WASM, which
+is why 7 contracts share 6 distinct code hashes.
+
+### Source ↔ deployment parity: verified 6/6
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+cd contracts && cargo build --workspace --locked --target wasm32v1-none --release
+cd ..
+node scripts/verify-deployments.mjs --wasm-dir contracts/target/wasm32v1-none/release
+```
+
+Result (2026-11-04, latest ledger 5551428):
+
+```
+✓ wrapped_asset        CBEU47GC…  wasm bb1a07685315a49d… wasm=local ✓
+✓ wrapped_usdc         CA6IYLXTU…  wasm bb1a07685315a49d…
+✓ oracle               CBXHLNCRH…  wasm 70e8c5c71bd31caa… wasm=local ✓
+✓ collateral_vault     CC5Z2WNZD…  wasm b99dc9e77fd69b8f… wasm=local ✓
+✓ lending_pool         CCPTC2QKV…  wasm 93b934c619687102… wasm=local ✓
+✓ liquidation          CDG34DGA3…  wasm 697df92e91c2f8a0… wasm=local ✓
+✓ lending_controller   CDEVH2BOD…  wasm 844c37d59213e602… wasm=local ✓
+
+WASM: 6/6 deployed contracts match the local build.
+```
+
+Local WASM sizes: `wrapped_asset` 14,593 B · `liquidation` 16,094 B · `oracle`
+22,301 B · `lending_pool` 32,015 B · `lending_controller` 39,758 B ·
+`collateral_vault` 12,019 B.
+
+### Deployment transactions (21, all successful)
+
+| #   | Step                             | Transaction hash                                                   |
+| --- | -------------------------------- | ------------------------------------------------------------------ |
+| 1   | create + fund admin (friendbot)  | `c96adc85f1ecfa85dc1d3f6dcecc62bf66f4f058ed283a0529b271cd0c83154a` |
+| 2   | upload `wrapped_asset.wasm`      | `2f34659dcab8c6f635daa8d93cd8ec933e8e8f0a05ad775f8a27e0253d2b8a24` |
+| 3   | upload `oracle.wasm`             | `a61c1127da38ddc16c67077f9a33b470ce2e61e3d76bcac1bbb48284de616854` |
+| 4   | upload `collateral_vault.wasm`   | `9983feaf94cdd69244222549700a50c0ad73874adaac0a9e0a93b385125786f5` |
+| 5   | upload `lending_pool.wasm`       | `c1d7552ea2f72c4d8a6f1aca197f76c391310a3d28aed93a07360d93c4da94fd` |
+| 6   | upload `liquidation.wasm`        | `3801bd4c885fa40cbc14253693042ff70bdfb96bc2d34e1aa90f50cf33e5fb3c` |
+| 7   | upload `lending_controller.wasm` | `004a7255fac01472c488a25c0947e1320e12a1773d7ea3e4d5b03a38cf37dbae` |
+| 8   | create `wrapped_asset`           | `7a2061c6b56c9686e1b34aeb3f6ce33c61ec2877cd5bf2b7c80c5e2cd2e1a43c` |
+| 9   | create `wrapped_usdc`            | `ac09d07cff9730298e516bfcbede886e027356a2340786e0bd1f8a6c48848d1f` |
+| 10  | create `oracle`                  | `714e1cd76a4cdfb9db25c05607291a816560947cf3997f2f303e2310c7ff260c` |
+| 11  | create `collateral_vault`        | `bde7cbdfb7ec6717d52c7c5dd35904dda88687590184727e98271ad4226ab617` |
+| 12  | create `lending_pool`            | `a65f78212558b78958f04c2eb7f33f612e95a96e09bf3f949e51fcda4330ee27` |
+| 13  | create `liquidation`             | `665b85d04c30ed5004932d0d406f1ac0cbcb6adfb549e1a05b7f0549e607744c` |
+| 14  | create `lending_controller`      | `d0b67da6a7fe2116c2ab5226b7c96ed3155e9cea9ac55fba4c0b5c90bc02f5db` |
+| 15  | initialize wETH                  | `97c131fb11da49cf634e8525d2f9e0835997a2e2600515e67b547a45a493a67e` |
+| 16  | initialize wUSDC                 | `299534bf85ac657334114775bacfec512e8c73ce515e27a7917a55d631a541e8` |
+| 17  | initialize oracle                | `6712784f8741584f6eb36b79be8392f6440f4b6f92b4e7155273267049772b82` |
+| 18  | initialize collateral_vault      | `83a730110d7927ababc1a01db2f67290fc07371e1d740b169c8632698fa4036e` |
+| 19  | initialize lending_pool          | `449ba804b6e5dedee5142e4b36bb9e29d8b8fa18276bfaf829e53d4d756ff3fa` |
+| 20  | initialize liquidation           | `cf961e3f72c589c32d68b1f0bb9a3c16a3b6334a0865689ec1b289ad9cec75a1` |
+| 21  | initialize lending_controller    | `541fa30eca2a8f0e2ffe42e0376aca299cdcc7c26797e924b6250800bd3c341b` |
+
+### Post-deploy wiring (records on-chain configuration)
+
+`lending_controller` instance storage contains `AdminSet`, `Bridge`,
+`WrappedAsset`, `LendingPool`, `CollateralVault`, `Oracle`. The pool and vault
+were then configured by `contracts/scripts/e2e-testnet.mjs` (`pool.add_asset`
+×3, `pool.add_operator` ×2, `vault.add_operator` ×2, `vault.set_liq_threshold`,
+`wrapped_asset.set_minter`), all with transaction hashes recorded in
+[`docs/verification/testnet-e2e-2026-11-04.json`](docs/verification/testnet-e2e-2026-11-04.json).
+
+### Live lending lifecycle — verified on testnet
+
+A full lifecycle was executed against these addresses on 2026-11-04; every step
+below is a real confirmed transaction (or a simulation for the rejected calls).
+Full log:
+[`docs/verification/testnet-e2e-2026-11-04.json`](docs/verification/testnet-e2e-2026-11-04.json).
+
+| Step                                | Result                                                                    | Evidence                 |
+| ----------------------------------- | ------------------------------------------------------------------------- | ------------------------ |
+| Supply 1,000 XLM collateral         | position `10_000_000_000`                                                 | `cef8de57…`              |
+| Borrow 50 USDC against it           | `debt_of = 500_000_000`                                                   | `e2459a33…`              |
+| Over-borrow beyond 75% LTV          | reverted; debt unchanged                                                  | simulation + state check |
+| Interest accrual over ~30 ledgers   | index `1.000000540…` → `1.000000572…`, debt `500_000_000` → `500_000_014` | `7a00fefa…`              |
+| Repay whole debt                    | `debt_of = 0`                                                             | `f62d7b20…`              |
+| Withdraw all deposit shares         | `total_deposit` decreased                                                 | `628af2f1…`              |
+| Pause controller, attempt supply    | reverted; position unchanged                                              | `e2b21f30…`              |
+| Unpause                             | confirmed                                                                 | `cb14470b…`              |
+| Liquidate a **solvent** position    | **succeeded** (see finding LIQ-RAW-UNITS)                                 | `0a8a4cfb…`              |
+| Liquidate an **insolvent** position | **reverted** (see finding LIQ-NO-ORACLE)                                  | simulation + state check |
+| Wrap with no attestations           | reverted; `total_supply` unchanged                                        | simulation               |
+
+## Verification status (checked 2026-11-04)
+
+| Item                                                         | Status           | How it was checked                                                                                                                  |
+| ------------------------------------------------------------ | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Admin account `GC3IFS…OUPY` exists on Stellar testnet        | ✅ verified      | Friendbot funding tx `c96adc85…`; Horizon `GET /accounts/{admin}` returns 200                                                       |
+| 7 Soroban contracts created and initialized                  | ✅ verified      | 21 successful transactions; `verifyOnChain` in the deploy script requires non-empty instance storage for all 7                      |
+| The contract IDs above exist in ledger state                 | ✅ verified      | `node scripts/verify-deployments.mjs` → all 7 resolve; `lastModifiedLedgerSeq` 5551410–5551423                                      |
+| Deployed WASM equals this working tree's build               | ✅ **verified**  | `--wasm-dir` comparison: **6/6 match** (7 contracts, 6 distinct WASMs — wETH and wUSDC share one)                                   |
+| Cross-contract wiring (pool/vault operators, minter, oracle) | ✅ verified      | `add_operator`/`set_minter` transactions listed in the e2e evidence JSON; `lending_controller` borrow→pool→vault path executed live |
+| Live lending lifecycle                                       | ✅ verified      | supply → borrow → interest → repay → withdraw, plus pause and liquidation cases (table above)                                       |
+| `app.spg.xyz` (hosted dashboard)                             | ❌ unavailable   | No DNS record; `spg.xyz` resolves to an unrelated third-party site. Not claimed.                                                    |
+| `api.spg.xyz` (hosted API)                                   | ❌ unavailable   | No DNS record                                                                                                                       |
+| `Bridge` on Sepolia / Amoy                                   | ⛔ not deployed  | Placeholder addresses only; no funded EVM deployer key and no RPC credentials were available in this environment                    |
+| Independent security audit                                   | ⛔ not performed | No auditor has reviewed this code. Nothing in this repository claims otherwise.                                                     |
 
 Run the local stack instead of a hosted demo — see
 [`README.md` → Setup](README.md#setup).
 
-## Stellar Testnet
+## Bridge attesters (2-of-3 threshold)
 
-| Contract               | Address                                                    | Ledger  | Installed WASM (sha256)                                            | Explorer                                                                                                                    |
-| ---------------------- | ---------------------------------------------------------- | ------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `wrapped_asset` (wETH) | `CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL` | 4057465 | `98e662b3b98a378ca7bacd1267e29bc56a2bb343427b4384323a9046dab35762` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL) |
-| `wrapped_usdc` (wUSDC) | `CCVDMRJYATZE6Y4C74PA4UZREV3TWASUL34XKYJ2RJB226ZZOJYAK67M` | 4057466 | `98e662b3b98a378ca7bacd1267e29bc56a2bb343427b4384323a9046dab35762` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CCVDMRJYATZE6Y4C74PA4UZREV3TWASUL34XKYJ2RJB226ZZOJYAK67M) |
-| `oracle`               | `CDHO2OMTEDKURE4EWNP3QTDCGO7SGBT46BYAPJDZPR26YQPUN2D6IK7K` | 4057467 | `33c0a71f0be73c335fafaee4a651be590f61c6e1c10c25778c3d69aecf7162cc` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDHO2OMTEDKURE4EWNP3QTDCGO7SGBT46BYAPJDZPR26YQPUN2D6IK7K) |
-| `collateral_vault`     | `CDZW33FW2PZKZGUNHOMR4U5DCSRUBI6VREZFHVMW6AULABVKSGFB7YFL` | 4057468 | `42812ae0680594b4c7d9456b6dc1a6dfeaabe0af2c5d50d112248ad1faa07b32` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDZW33FW2PZKZGUNHOMR4U5DCSRUBI6VREZFHVMW6AULABVKSGFB7YFL) |
-| `lending_pool`         | `CAC5WYMZJIQKPFM6FRE6GHB37MQYGBBFKOVPJ7RMV46Z3II2VVBGS5FO` | 4057469 | `6797155921a7e804d7b823cb8dba8b21b91f99f08447f846a79391f2ac857426` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAC5WYMZJIQKPFM6FRE6GHB37MQYGBBFKOVPJ7RMV46Z3II2VVBGS5FO) |
-| `liquidation`          | `CD5SQP6NAG6RDPYV5FFX2A4JKSTN5D2HQH5XOVCG5X63CEWSQTIUZ4WY` | 4057470 | `0f1ea03adee0cf5d1da93f7a2617deec7f8fd57af4eb2d97e67fb1dfea30fe12` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CD5SQP6NAG6RDPYV5FFX2A4JKSTN5D2HQH5XOVCG5X63CEWSQTIUZ4WY) |
-| `lending_controller`   | `CBNG3R6J2S4ZP7OEKIOS2JRVOJWG6YA56UR6N4Z4ZWIOH6LEX6R4NI2X` | 4057471 | `a959cbdc5f9c107231bb3970863d3f0794f95b70b43c7e74b9694539d1f81eee` | [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CBNG3R6J2S4ZP7OEKIOS2JRVOJWG6YA56UR6N4Z4ZWIOH6LEX6R4NI2X) |
+| Index | Public key                                                 |
+| ----- | ---------------------------------------------------------- |
+| 0     | `GBD554K4BVW67FOLY336YGA2LXTVQV3I7XHTKO3YI2BTT6Z2FA76B4LQ` |
+| 1     | `GA7X4YN3PWRTGQ73C22RBOWWW4M3PKRUOILOUJHW7KGMWYYH4NF22YNU` |
+| 2     | `GD6BXIKDIUKRBGNRTNSREMA7V5KBNRGJRPBLZCC4235VUZDGX5GOSPUS` |
 
-The `lending_controller` instance stores its wired dependencies as instance
-keys: `AdminSet`, `Bridge`, `CollateralVault`, `LendingPool`, `Oracle`,
-`WrappedAsset` — i.e. the cross-contract configuration described in
-`docs/architecture.md` is present on-chain.
-
-**RPC event retention:** Soroban RPC keeps contract events for roughly 7 days
-(`ledgerRetentionWindow` ≈ 120,960 ledgers). The controller has emitted **no
-events inside the current retention window**, so event shapes are asserted by
-unit tests against the `#[contractevent]` definitions rather than by live data.
-Any indexer starting from scratch can only backfill inside that window.
-
-The same seven IDs are the source of truth for the code:
-`packages/sdk/src/manifest.json` → `stellar.contracts`.
-
-**Admin key:** `GA6ZXOF7TP3VSUHTZEKBEWW5HYIQRJJ25TJ45YRVAQXLZEEVFY6PJEZY`
-
-**Bridge attesters (2-of-3 threshold):**
-
-| Index | Role | Public Key                                                 |
-| ----- | ---- | ---------------------------------------------------------- |
-| 0     | Hot  | `GDYEJQJQDCIWZGMVPXCSXUVW3TGUH2JERXWORBRXKLDF4ZUIAQCE5DXO` |
-| 1     | Warm | `GBLZVFSHNMAJW5IJLLEKSCVJVJBVUEGZ5DXUARG4CPDOKHQ7B3EFYG4W` |
-| 2     | Cold | `GCPQMX62ANCNTO3VEOSGVRCQLXNWABMG6XDTDZICNBSLUSEWMUZD46PE` |
-
-> The attester **secret** keys are never in this repository. They are supplied
-> to `services/payment` through `ATTESTER_KEYS_FILE` (preferred) or
-> `ATTESTER_KEYS` — see `services/payment/.env.example`.
+> The attester **secret** keys live only in `contracts/.env` (gitignored) and
+> are never committed. For `services/payment` use `ATTESTER_KEYS_FILE`
+> (preferred) or `ATTESTER_KEYS`.
 
 ## Contracts in the workspace that are not deployed
 
-`governance` and `rewards` are implemented and tested in the Soroban workspace
-(`contracts/governance/soroban`, `contracts/rewards/soroban`) but are **not**
-part of the deployment above. The seven rows above are the deployed set.
+`governance` and `rewards` are implemented and tested
+(`contracts/governance/soroban`, `contracts/rewards/soroban`) but are not part
+of the deployment above.
 
-## EVM Testnet (Sepolia)
+---
 
-| Contract | Address                                                         | Explorer |
-| -------- | --------------------------------------------------------------- | -------- |
-| `Bridge` | `0x0000000000000000000000000000000000000000` (not yet deployed) | —        |
+## Previous deployment — 2026-08-09 (superseded, still on-chain)
 
-## EVM Testnet (Polygon Amoy)
+Preserved for history. These addresses host **older code** (verified 2026-11-01:
+0/6 WASM hashes matched that working tree) and are **not** referenced by
+`packages/sdk/src/manifest.json` any more. Admin: `GA6ZXOF7…PJEZY`.
 
-| Contract | Address                                                         | Explorer |
-| -------- | --------------------------------------------------------------- | -------- |
-| `Bridge` | `0x0000000000000000000000000000000000000000` (not yet deployed) | —        |
+| Contract               | Address                                                    | Ledger  | Installed WASM (sha256)                                            |
+| ---------------------- | ---------------------------------------------------------- | ------- | ------------------------------------------------------------------ |
+| `wrapped_asset` (wETH) | `CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL` | 4057465 | `98e662b3b98a378ca7bacd1267e29bc56a2bb343427b4384323a9046dab35762` |
+| `wrapped_usdc` (wUSDC) | `CCVDMRJYATZE6Y4C74PA4UZREV3TWASUL34XKYJ2RJB226ZZOJYAK67M` | 4057466 | `98e662b3b98a378ca7bacd1267e29bc56a2bb343427b4384323a9046dab35762` |
+| `oracle`               | `CDHO2OMTEDKURE4EWNP3QTDCGO7SGBT46BYAPJDZPR26YQPUN2D6IK7K` | 4057467 | `33c0a71f0be73c335fafaee4a651be590f61c6e1c10c25778c3d69aecf7162cc` |
+| `collateral_vault`     | `CDZW33FW2PZKZGUNHOMR4U5DCSRUBI6VREZFHVMW6AULABVKSGFB7YFL` | 4057468 | `42812ae0680594b4c7d9456b6dc1a6dfeaabe0af2c5d50d112248ad1faa07b32` |
+| `lending_pool`         | `CAC5WYMZJIQKPFM6FRE6GHB37MQYGBBFKOVPJ7RMV46Z3II2VVBGS5FO` | 4057469 | `6797155921a7e804d7b823cb8dba8b21b91f99f08447f846a79391f2ac857426` |
+| `liquidation`          | `CD5SQP6NAG6RDPYV5FFX2A4JKSTN5D2HQH5XOVCG5X63CEWSQTIUZ4WY` | 4057470 | `0f1ea03adee0cf5d1da93f7a2617deec7f8fd57af4eb2d97e67fb1dfea30fe12` |
+| `lending_controller`   | `CBNG3R6J2S4ZP7OEKIOS2JRVOJWG6YA56UR6N4Z4ZWIOH6LEX6R4NI2X` | 4057471 | `a959cbdc5f9c107231bb3970863d3f0794f95b70b43c7e74b9694539d1f81eee` |
+
+### Why the old hashes did not match
+
+Two independent causes, both confirmed:
+
+1. **The code changed after the deployment.** `main` received contract changes
+   between 2026-08-09 and 2026-11-01, so the deployed bytecode predates the
+   working tree. The deploy script derives salts from a label
+   (`sha256(saltLabel)`) that does **not** include the WASM bytes, so re-running
+   it against the same admin key resumes the _old_ code instead of redeploying.
+2. **Soroban WASM is not bit-reproducible across toolchains.** Bytecode embeds
+   compiler-dependent data (function ordering, panic-handler metadata), so a
+   different `rustc`/`soroban-sdk` combination produces a different SHA-256 even
+   for identical source. Parity can only be asserted against a build made with
+   the pinned toolchain (`Rust 1.91.0`, `soroban-sdk 27.0.6`), which is what CI
+   and the verification command do.
+
+The 2026-11-04 deployment avoids problem 1 by deploying under a **new admin
+keypair** (new contract IDs) from the pinned toolchain, which is why parity is
+now 6/6.
+
+## EVM Testnet (Sepolia / Polygon Amoy)
+
+| Contract | Address                                                         | Status                                                                |
+| -------- | --------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `Bridge` | `0x0000000000000000000000000000000000000000` (not yet deployed) | ⛔ blocked — no funded deployer key or RPC credentials were available |
+
+`Bridge.sol` compiles and its Hardhat suite passes locally; deploying it needs a
+funded key and an RPC endpoint, neither of which exists in this environment. See
+[`docs/verification-status.md`](docs/verification-status.md).
 
 ---
 
@@ -98,29 +209,25 @@ part of the deployment above. The seven rows above are the deployed set.
 
 ### Deploying the dashboard (Vercel)
 
-The dashboard is a standard Next.js app (`apps/web`, package
-`@stellar-payment-gateway/dashboard`). It is deployed from the `main` branch
-with the build command configured in `apps/web/vercel.json`:
+The dashboard is a standard Next.js app (`apps/web`). Build command configured
+in `apps/web/vercel.json`:
 
 ```bash
 cd ../.. && pnpm --filter @stellar-payment-gateway/sdk build && cd apps/web && next build
 ```
 
-Required build-time variables (see `apps/web/.env.example`):
-
-| Variable                         | Example                                                    |
+| Variable                         | Value                                                      |
 | -------------------------------- | ---------------------------------------------------------- |
 | `NEXT_PUBLIC_API_URL`            | `http://localhost:4000` (local) or the deployed API URL    |
-| `NEXT_PUBLIC_STELLAR_CONTROLLER` | `CBNG3R6J2S4ZP7OEKIOS2JRVOJWG6YA56UR6N4Z4ZWIOH6LEX6R4NI2X` |
+| `NEXT_PUBLIC_STELLAR_CONTROLLER` | `CDEVH2BOD4SMPNEORPO33A47PWN6A2IBAUETSF6U4XJ6FZ7IMMVMYZUI` |
 
-The previous custom domain (`app.spg.xyz`) is **not** configured — it has no DNS
-record, and the apex domain is not controlled by this project. Add a domain in
-the Vercel project only after the DNS is actually pointed at it, and update this
-table when it is.
+Hosting requires credentials and DNS control that this environment does not
+have; nothing is claimed as live until it is verified.
 
 ---
 
 **Deployer script:** `contracts/scripts/deploy-testnet.mjs` · **Wrapper:**
-`contracts/scripts/deploy-testnet.sh` · **Network:** Stellar Testnet
+`contracts/scripts/deploy-testnet.sh` · **Lifecycle run:**
+`contracts/scripts/e2e-testnet.mjs` · **Network:** Stellar Testnet
 (`Test SDF Network ; September 2015`) · **RPC:**
 `https://soroban-testnet.stellar.org`

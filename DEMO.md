@@ -64,9 +64,9 @@ pnpm dev
 
 - **Show:** Stellar Expert for each contract (click through 2–3)
   - Lending controller:
-    `CBNG3R6J2S4ZP7OEKIOS2JRVOJWG6YA56UR6N4Z4ZWIOH6LEX6R4NI2X`
-  - Lending pool: `CAC5WYMZJIQKPFM6FRE6GHB37MQYGBBFKOVPJ7RMV46Z3II2VVBGS5FO`
-  - Wrapped ETH: `CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL`
+    `CDEVH2BOD4SMPNEORPO33A47PWN6A2IBAUETSF6U4XJ6FZ7IMMVMYZUI`
+  - Lending pool: `CCPTC2QKVXFA25CJRRQD7NZZ5WSA27EBWWJH4MFFKSM27SKNKB3H5JQL`
+  - Wrapped ETH: `CBEU47GCJ2IK3RBR2Y7Z5XVYXFIEFAKPWIO5B4IQEIZOICYM4BW6MJYC`
 - **Say:** "The 7 Soroban contracts are deployed on Stellar testnet. Here you
   can see the lending controller with its 6 storage keys — including the
   BridgeSet with 3 attester public keys and a 2-of-3 threshold, the admin
