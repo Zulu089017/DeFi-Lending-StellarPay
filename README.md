@@ -26,7 +26,11 @@
 > the EVM bridge, and the off-chain services are functional and covered by
 > automated tests, but **no external security audit has been performed**. There
 > is no mainnet deployment and no live hosted dashboard. **Do not deposit real
-> assets.** See
+> assets.** A live testnet lifecycle was executed on 2026-11-04 against the
+> seven deployed contracts (6/6 WASM parity with this source tree; hashes and
+> transaction evidence in [`DEPLOYMENTS.md`](DEPLOYMENTS.md)). That run also
+> **proved two critical liquidation defects** — see
+> [Known limitations](#known-limitations). See
 > [Security, risk and audit status](#security-risk-and-audit-status).
 
 ---
@@ -171,11 +175,11 @@ docs/               # protocol documentation
 
 ## Supported networks
 
-| Network                                                   | Status                           | Notes                                                                                   |
-| --------------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------- |
-| **Stellar testnet** (`Test SDF Network ; September 2015`) | Active                           | Soroban contracts deployed 2026-08-09; addresses in [`DEPLOYMENTS.md`](DEPLOYMENTS.md). |
-| **Ethereum Sepolia / Polygon Amoy**                       | Contract ready, **not deployed** | `Bridge` compiles and its test suite passes; deployment requires a funded deployer key. |
-| Stellar mainnet                                           | Not planned yet                  | No mainnet deployment, no audit, no bug bounty.                                         |
+| Network                                                   | Status                           | Notes                                                                                                                    |
+| --------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Stellar testnet** (`Test SDF Network ; September 2015`) | Active                           | Soroban contracts deployed 2026-11-04; the superseded 2026-08-09 set is preserved in [`DEPLOYMENTS.md`](DEPLOYMENTS.md). |
+| **Ethereum Sepolia / Polygon Amoy**                       | Contract ready, **not deployed** | `Bridge` compiles and its test suite passes; deployment requires a funded deployer key.                                  |
+| Stellar mainnet                                           | Not planned yet                  | No mainnet deployment, no audit, no bug bounty.                                                                          |
 
 ## Prerequisites
 
@@ -398,6 +402,7 @@ pnpm exec prettier --check "**/*.{json,md,yml,yaml}" "!**/node_modules/**" "!**/
 (cd contracts && npm ci && npx hardhat compile && npx hardhat test)
 (cd contracts && cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --workspace --locked)
 node scripts/verify-deployments.mjs   # checks every manifest contract id against Stellar RPC (read-only)
+(cd contracts && node scripts/e2e-testnet.mjs)   # live lifecycle; signs transactions and spends testnet XLM
 ```
 
 ## Security, risk and audit status
@@ -430,6 +435,20 @@ node scripts/verify-deployments.mjs   # checks every manifest contract id agains
 
 ## Known limitations
 
+- **Critical: liquidation is priced in raw token units, not USD values.**
+  `liquidation.liquidate` compares `vault.position` against `pool.debt_of`
+  directly, so a **solvent** position can be seized and an **insolvent** one
+  cannot be closed. Both directions were reproduced with real transactions on
+  Stellar testnet on 2026-11-04
+  ([evidence](docs/verification/testnet-e2e-2026-11-04.md)). Invariant Q-1 as
+  documented is not implemented. **Do not deploy this to mainnet.**
+- **No asset custody.** No Soroban contract moves tokens: supply, borrow, repay,
+  deposit and mint only mutate internal storage. There is no SAC/`token::Client`
+  transfer in the workspace, so the "balances" are a ledger, not holdings.
+- **The admin threshold is not enforced.** `require_admin` accepts the first
+  admin's authorization; the stored N-of-M threshold is never checked.
+- **The controller has no `repay` / `withdraw` entry point.** Those flows must
+  be driven through `lending_pool` and `liquidation` directly.
 - **No hosted demo.** `app.spg.xyz` and `api.spg.xyz` currently have **no DNS
   record**, and `spg.xyz` resolves to an unrelated third-party site, so no
   hosted dashboard or API is claimed as live. Run the stack locally instead (see

@@ -1,139 +1,90 @@
 # Verification Status
 
-> A record of **what was actually executed** for the current pass, in which
-> environment, and what could not be executed and why. This exists so that a
-> reviewer does not have to guess whether a green check was seen or merely
-> assumed.
+> A record of **what was actually executed**, in which environment, and what
+> could not be executed and why. A green check here means the command was run
+> and its exit status was inspected — not that it was assumed.
 
-**Pass date:** 2026-11-01 (latest) · 2026-10-20 (previous) **Environment:**
-Codespace container (Linux, x86_64)
+**Pass date:** 2026-11-04 **Environment:** Linux container (x86_64), no Docker
+daemon, no `stellar` CLI, no `slither`.
 
-| Component          | Version in this environment                                           | Version pinned by the repo                         |
-| ------------------ | --------------------------------------------------------------------- | -------------------------------------------------- |
-| Node.js            | v24.22.2                                                              | CI: 22 (`NODE_VERSION`)                            |
-| pnpm               | 10.0.0                                                                | `packageManager: pnpm@10.0.0`                      |
-| npm                | 11.19.0                                                               | used only by `contracts/`                          |
-| Rust / cargo       | **1.91.0 installed for this pass** (`wasm32v1-none`, rustfmt, clippy) | CI: 1.91.0 + `wasm32v1-none`                       |
-| Docker             | **not available**                                                     | optional (Postgres / Redis for local services)     |
-| `slither-analyzer` | **not installed**                                                     | CI: `crytic/slither-action@v0.4.2`, slither 0.11.4 |
+## Toolchain in this environment
 
-## Executed and passing
+| Tool    | Version here                                                                 | Pinned by the repo            |
+| ------- | ---------------------------------------------------------------------------- | ----------------------------- |
+| Node.js | v24.22.2                                                                     | CI: 22                        |
+| pnpm    | 10.0.0                                                                       | `packageManager: pnpm@10.0.0` |
+| npm     | 11.19.1                                                                      | used only by `contracts/`     |
+| Rust    | **1.91.0** (+ `wasm32v1-none`, rustfmt, clippy — installed during this pass) | CI: 1.91.0                    |
+| Docker  | not available                                                                | optional (Postgres/Redis)     |
+| slither | not installed                                                                | CI: `crytic/slither-action`   |
 
-| Command (run from the repository root)                                                                                         | Result                                                                                                                                                                     |
-| ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile`                                                                                               | ✅ `Already up to date` — `pnpm-lock.yaml` is in sync with every workspace manifest                                                                                        |
-| `pnpm exec prettier --check "**/*.{json,md,yml,yaml}" "!**/node_modules/**" "!**/dist/**" "!**/target/**"`                     | ✅ no files reported                                                                                                                                                       |
-| `pnpm typecheck`                                                                                                               | ✅ 12/12 turbo tasks                                                                                                                                                       |
-| `pnpm lint`                                                                                                                    | ✅ 2/2 turbo tasks (0 errors; 5 warnings from `bridge` and `dashboard`)                                                                                                    |
-| `pnpm test` (2026-11-01)                                                                                                       | ✅ 35/35 turbo tasks — **144 tests**: api 30, bridge 52, indexer 51, sdk 7, dashboard 3, relayer 1                                                                         |
-| `pnpm --filter @stellar-payment-gateway/indexer test`                                                                          | ✅ **51 tests**: Soroban event decoding (12), pagination/dedupe/cursor/gap handling (7), EVM bridge log mapping (7), reconciliation rules + service (24), module smoke (1) |
-| `node scripts/verify-deployments.mjs --wasm-dir contracts/target/wasm32v1-none/release`                                        | ✅ all 7 manifest contract ids resolve in ledger state; **0/6 WASM hashes match the local build**                                                                          |
-| Live Soroban RPC smoke: `HttpEventSource` against `soroban-testnet.stellar.org`                                                | ✅ `getHealth` → oldest 5,383,053 / latest 5,504,012 ledgers; `getEvents` page returned cleanly (controller has no events in the retention window)                         |
-| Live read-only call: `SorobanViewReader` → deployed `wrapped_asset.total_supply()`, `lending_pool.total_deposit/borrow("XLM")` | ✅ all return `0` (simulation succeeds against the deployed contracts; no activity to report)                                                                              |
-| `pnpm --filter @stellar-payment-gateway/{bridge,relayer,indexer,api,sdk} exec prisma generate`                                 | ✅ 4 Prisma clients generated                                                                                                                                              |
-| `pnpm --filter @stellar-payment-gateway/{bridge,relayer,indexer,api,sdk} exec tsc --noEmit`                                    | ✅ clean                                                                                                                                                                   |
-| `pnpm --filter @stellar-payment-gateway/sdk build`                                                                             | ✅ `dist/` emitted                                                                                                                                                         |
-| `pnpm --filter @stellar-payment-gateway/dashboard exec tsc --noEmit`                                                           | ✅ clean                                                                                                                                                                   |
-| `pnpm --filter @stellar-payment-gateway/dashboard test`                                                                        | ✅ 3 tests                                                                                                                                                                 |
-| `pnpm --filter @stellar-payment-gateway/dashboard exec next lint`                                                              | ✅ clean (warnings only)                                                                                                                                                   |
-| `pnpm --filter @stellar-payment-gateway/dashboard build`                                                                       | ✅ Next.js production build succeeded                                                                                                                                      |
-| `cd contracts && npm ci`                                                                                                       | ✅ lockfile in sync with `contracts/package.json`                                                                                                                          |
-| `cd contracts && npx hardhat compile`                                                                                          | ✅ compiled (Solidity 0.8.24, optimizer + `viaIR`)                                                                                                                         |
-| `cd contracts && npx hardhat test`                                                                                             | ✅ **17 passing**                                                                                                                                                          |
-| `npm ci --dry-run` in the repository root, `packages/sdk`, `apps/api`                                                          | ✅ all three npm lockfiles in sync with their manifests                                                                                                                    |
-| `cd contracts && npm ci && npx hardhat compile && npx hardhat test` (re-run 2026-11-01)                                        | ✅ compiled; **17 passing**                                                                                                                                                |
-| `cd contracts && cargo fmt --all -- --check` (Rust 1.91.0 installed 2026-11-01)                                                | ✅ clean                                                                                                                                                                   |
-| `cd contracts && cargo clippy --workspace --all-targets --locked -- -D warnings`                                               | ✅ clean (finished in 1m48s)                                                                                                                                               |
-| `cd contracts && cargo test --workspace --locked`                                                                              | ✅ **112 passed, 0 failed** (113 `#[test]` declared; one not compiled)                                                                                                     |
-| `cd contracts && cargo check --workspace --locked --target wasm32v1-none --release`                                            | ✅ finished in 1m05s                                                                                                                                                       |
+## Executed and passing (2026-11-04)
 
-## Not executable here — and exactly why
+| Command                                                                                 | Result                                                                                             |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile`                                                        | ✅ lockfile in sync                                                                                |
+| `pnpm exec prettier --check "**/*.{json,md,yml,yaml}" …`                                | ✅ clean after formatting the files changed in this pass                                           |
+| `pnpm lint`                                                                             | ✅ 2/2 turbo tasks, **0 errors**, 3 warnings (`bridge`)                                            |
+| `pnpm typecheck`                                                                        | ✅ 12/12 turbo tasks                                                                               |
+| `pnpm test`                                                                             | ✅ 35/35 turbo tasks, **144 tests** (api 30, bridge 52, indexer 51, sdk 7, dashboard 3, relayer 1) |
+| `cd contracts && cargo build --workspace --locked --target wasm32v1-none --release`     | ✅ finished in 1m46s                                                                               |     | `cd contracts && cargo test --workspace --locked` | ✅ **112 passed, 0 failed** |
+| `cd contracts && npm ci && npx hardhat test`                                            | ✅ **17 passing** (Solidity `Bridge.sol`)                                                          |
+| `cd contracts && node scripts/deploy-testnet.mjs`                                       | ✅ 21 successful transactions; all 7 contracts verified initialized                                |
+| `node scripts/verify-deployments.mjs --wasm-dir contracts/target/wasm32v1-none/release` | ✅ 7/7 IDs resolve · **6/6 WASM hashes match the local build**                                     |
+| `cd contracts && node scripts/e2e-testnet.mjs`                                          | ✅ **45 steps, 0 failures** (live supply/borrow/repay/withdraw, pause, liquidation)                |
 
-| Check                                                                   | Blocker                                                                                                     | How to run it                                                                                                 |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Slither static analysis                                                 | `slither-analyzer` is not installed and the PyPI install requires network + Python ≥ 3.10 for ≥ 0.11.5      | `pipx install slither-analyzer==0.11.4` then `slither contracts/lending/evm --filter-paths "node_modules      | openzeppelin"` |
-| Docker-backed integration flows (`infra/docker/docker-compose.dev.yml`) | No Docker daemon in the container                                                                           | `docker compose -f infra/docker/docker-compose.dev.yml up -d`                                                 |
-| Live dashboard / API                                                    | `app.spg.xyz` and `api.spg.xyz` have **no DNS record**; `spg.xyz` resolves to an unrelated third-party site | Deploy `apps/web` and `apps/api` and configure the DNS — until then the repository does not claim a live demo |
+### Defect found and fixed in this pass
 
-## External facts re-checked during this pass
+`pnpm test` initially **failed** (`PNPM_TEST_EXIT=2`):
 
-| Claim                                                         | Method                                                                                         | Outcome                                                                                                                                                                                                                                                                                                             |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The 7 Soroban contracts were deployed to Stellar testnet      | Horizon testnet API: `GET /accounts/{admin}/operations?type=invoke_host_function`              | ✅ The admin account `GA6ZXO…PJEZY` exists and shows **6 `UploadContractWasm` + 7 `CreateContract` + 7 `InvokeContract`** host-function operations on **2026-08-09**, all with `transaction_successful: true`                                                                                                       |
-| The contract IDs in `DEPLOYMENTS.md` exist on Stellar testnet | Soroban RPC `getLedgerEntries` on the contract-instance key (`scripts/verify-deployments.mjs`) | ✅ **Confirmed 2026-11-01** — all seven IDs return a live contract instance, `lastModifiedLedgerSeq` 4057465–4057471 (one deployment run). The earlier “not confirmed” note used Horizon’s non-existent `/contracts/{id}` route, which 404s for every contract; it was the wrong endpoint, not a missing deployment |
-| The deployed WASM is the code in this working tree            | sha256 of installed WASM vs `cargo build --target wasm32v1-none --release`                     | ❌ **No** — all six contract crates differ (e.g. controller deployed `a959cbdc…`, local `844c37d5…`). The IDs are valid but host **older** code; claim deploy/source parity only after a redeploy with bumped salts                                                                                                 |
-| `app.spg.xyz` is a live demo                                  | DNS lookup                                                                                     | ❌ **No DNS record** — the README no longer advertises a live demo                                                                                                                                                                                                                                                  |
-| `api.spg.xyz` is a live API                                   | DNS lookup                                                                                     | ❌ No DNS record                                                                                                                                                                                                                                                                                                    |
-| `spg.xyz` is the project domain                               | HTTPS fetch                                                                                    | ⚠️ Resolves, but serves "Stephenson Property Group LLC                                                                                                                                                                                                                                                              | rentals" — an unrelated third-party site. `stellar.toml` now points `ORG_URL` at this repository |
+```
+@stellar-payment-gateway/indexer:build: src/reconcile/service.ts(121,53):
+  error TS7006: Parameter 'r' implicitly has an 'any' type.
+```
 
-## Lockfile policy
+Root cause: `turbo.json` had `build.dependsOn = ["^build"]`, so the indexer's
+`tsc` ran before `prisma generate`, leaving Prisma model types unresolved. Fix:
+`build.dependsOn = ["^build", "prisma:generate"]`. With that change the suite
+runs 35/35; the file was not modified and no test or check was weakened.
 
-| Lockfile                                                                            | Owner                                                                    | Used by                                                                            |
-| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `pnpm-lock.yaml`                                                                    | pnpm workspace (root + 19 workspace packages)                            | CI `pnpm install --frozen-lockfile`; `packageManager: pnpm@10.0.0`                 |
-| `contracts/package-lock.json`                                                       | npm project (`contracts/` is deliberately **not** in the pnpm workspace) | CI `npm ci` for the EVM job (`cache-dependency-path: contracts/package-lock.json`) |
-| `package-lock.json`, `packages/sdk/package-lock.json`, `apps/api/package-lock.json` | npm mirrors kept in sync for tooling that shells out to npm              | `npm ci --dry-run` verified in sync                                                |
+## Not executed here — and exactly why
 
-**Dependency change in this pass:** `services/indexer` was aligned from
-`@stellar/stellar-sdk@12.3.0` to `^16.2.0` (the version already used by
-`packages/sdk` and `contracts/scripts/deploy-testnet.mjs`). v12 cannot parse
-current testnet simulated-transaction responses (it throws while decoding
-`SorobanTransactionData`), so on-chain reads were impossible on it. The event
-stream does not depend on the SDK's RPC client at all — it speaks JSON-RPC
-directly — so this bump only affects simulation parsing.
+| Check                                     | Blocker                                                                                               | How to run it                                                          |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Slither static analysis                   | `slither-analyzer` is not installed in this container                                                 | `pipx install slither-analyzer` then `slither contracts/lending/evm`   |
+| Docker-backed integration flows           | no Docker daemon                                                                                      | `docker compose -f infra/docker/docker-compose.dev.yml up -d`          |
+| `Bridge` deployment to Sepolia / Amoy     | no funded deployer key and no RPC provider credentials were available                                 | `cd contracts && npx hardhat run scripts/deploy.ts --network sepolia`  |
+| Hosted dashboard / API                    | no hosting account, no DNS control; `app.spg.xyz` has no record and `spg.xyz` is a third party's site | deploy `apps/web` + `apps/api`, then add a domain and update the table |
+| Independent security audit                | requires a third-party auditor; **none has been engaged**                                             | see [`SECURITY.md`](../SECURITY.md)                                    |
+| Live stale-price rejection                | `oracle.get_price` floors staleness at 300 ledgers (~25 min) — beyond this run's window               | let an oracle price age ~30 min, then `get_price` must revert          |
+| Live 2-of-3 `wrap` with real attestations | the off-chain signer was not run against the new attester keys in this pass                           | run `services/payment` with `ATTESTER_KEYS`/`ATTESTER_KEYS_FILE`       |
+| Indexer/reconciler against real activity  | requires Postgres + a populated event stream; no Docker here                                          | start the stack, index the 2026-11-04 events, run the reconciler       |
 
-When you change a `package.json`, regenerate the matching lockfile
-(`pnpm install` for the workspace, `npm install --package-lock-only` for the npm
-projects) and commit both.
+## Findings that change the project's status
 
-## Lockfile drift found and fixed (2026-10-20)
+The live run did not merely pass — it surfaced defects. These are recorded in
+[`docs/security.md`](security.md) and [`docs/invariants.md`](invariants.md):
 
-The three npm lockfiles that mirror the pnpm workspace were **out of sync with
-their manifests** in `main` (at `20f4523`). `npm ci` therefore failed with
-`EUSAGE` in every one of them, while `pnpm install --frozen-lockfile` was
-unaffected (it reads `pnpm-lock.yaml`).
+| ID                            | Severity | Status                                               |
+| ----------------------------- | -------- | ---------------------------------------------------- |
+| LIQ-RAW-UNITS / LIQ-NO-ORACLE | Critical | **Open** — liquidation prices in raw units, not USD  |
+| NO-ASSET-CUSTODY              | High     | **Open** — no token transfers anywhere on Stellar    |
+| ADMIN-NOT-MULTISIG            | Medium   | **Open** — admin threshold stored but never enforced |
+| MISSING-USER-ENTRYPOINTS      | Medium   | **Open** — controller has no repay/withdraw          |
 
-| Lockfile                         | Drift in `main`                                                                                                                                                                              | `npm ci` error (verbatim)                                                                                                                        |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `package-lock.json` (root)       | `@typescript-eslint/eslint-plugin` and `@typescript-eslint/parser` were declared in `package.json` but absent from the lockfile                                                              | `npm ci can only install packages when your package.json and package-lock.json … are in sync`                                                    |
-| `packages/sdk/package-lock.json` | resolved `@stellar/stellar-sdk@12.3.0` against the required `^16.3.1`; `@stellar/js-xdr`, `bignumber.js`, `eventsource`, `commander`, `@noble/ed25519`, `@noble/hashes` all stale or missing | `Invalid: lock file's @stellar/stellar-sdk@12.3.0 does not satisfy @stellar/stellar-sdk@16.3.1` · `Missing: @noble/ed25519@3.2.0 from lock file` |
-| `apps/api/package-lock.json`     | `ioredis` and `prom-client` (and the whole `redis` dependency chain) were missing                                                                                                            | `Missing: ioredis@5.11.1 from lock file` · `Missing: prom-client@15.1.3 from lock file`                                                          |
+Evidence:
+[`docs/verification/testnet-e2e-2026-11-04.md`](verification/testnet-e2e-2026-11-04.md)
+and its JSON sibling.
 
-**Fix:** each lockfile was regenerated with `npm install --package-lock-only`
-(no dependency versions were changed by hand) and re-verified with
-`npm ci --dry-run` in all four npm projects (`.`, `packages/sdk`, `apps/api`,
-`contracts`) — all four now exit 0.
+## Deployment facts re-checked during this pass
 
-**Remaining policy question (not a defect):** the root, `packages/sdk` and
-`apps/api` npm lockfiles duplicate `pnpm-lock.yaml` for a subset of the
-workspace. Nothing in CI installs them (CI uses `pnpm install --frozen-lockfile`
-for the workspace and `npm ci` only inside `contracts/`). They are kept in sync
-because some tooling shells out to npm. If that duplication is unwanted, the
-cleanest change is to delete the three mirrors and add a CI step that fails when
-a `package.json` changes without its mirror being regenerated. Contributors: see
-the lockfile table in [`.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md).
+| Claim                                       | Method                                                      | Outcome                                                                                                |
+| ------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Seven contract IDs exist in ledger state    | Soroban RPC `getLedgerEntries` via `verify-deployments.mjs` | ✅ all seven resolve, ledgers 5551410–5551423, one deployment run                                      |
+| Deployed code equals this working tree      | sha256 of installed WASM vs local release build             | ✅ **6/6 match** (7 contracts, 6 distinct WASMs — wETH/WUSDC share one)                                |
+| The previous (2026-08-09) deployment's code | same comparison against those seven IDs                     | ❌ 0/6 matched this tree — that deployment hosts older code; superseded, preserved in `DEPLOYMENTS.md` |
+| A testnet lending lifecycle executes        | real signed transactions                                    | ✅ supply, borrow, interest, repay, withdraw, pause, liquidation (see evidence)                        |
 
-## Rust dependency resolution (the `ed25519-dalek` / `ChaCha20Rng` history)
-
-The historical failure was a `rand_core` split between `ed25519-dalek 1.x`
-(pulled by the old `soroban-env-host` test utilities) and `ed25519-dalek 2.x`
-(pulled by `soroban-sdk`). The current, committed resolution in
-`contracts/Cargo.lock` is:
-
-| Crate              | Version                                      | Pulled in by                                                                     |
-| ------------------ | -------------------------------------------- | -------------------------------------------------------------------------------- |
-| `soroban-sdk`      | 27.0.6 (`=27.0.6` in `contracts/Cargo.toml`) | workspace contracts                                                              |
-| `soroban-env-host` | 27.0.1                                       | `soroban-sdk` (test utilities)                                                   |
-| `ed25519-dalek`    | 2.2.0                                        | `soroban-env-host` → `elliptic-curve` / `ecdsa`                                  |
-| `ed25519-dalek`    | 3.0.0                                        | `soroban-sdk` (direct)                                                           |
-| `rand_core`        | 0.6.4                                        | `rand 0.8.7` → `rand_chacha 0.3.1` (`ChaCha20Rng`) — the `soroban-env-host` path |
-| `rand_core`        | 0.10.1                                       | the `ed25519-dalek 3.x` / `signature 3.x` path                                   |
-
-Both `ed25519-dalek` majors and both `rand_core` majors coexist in one committed
-lockfile, so the old "no single `rand_core` version" conflict is resolved by
-**version isolation**, not by forcing a single version. The solution is
-reproducible because `contracts/Cargo.lock` is committed and CI builds with
-`--locked`. `soroban-token-sdk` / `stellar-asset-sdk` were removed from the
-workspace dependencies because no contract uses them and their transitive
-constraints were part of the original failure — see
-[`contracts/BUILD_ENV_NOTES.md`](../contracts/BUILD_ENV_NOTES.md).
+> The earlier explanation "deployed ≠ local because the local toolchain differs"
+> was only half right: the 2026-08-09 deployment also predated contract code
+> changes on `main`. Both causes are documented in `DEPLOYMENTS.md`.

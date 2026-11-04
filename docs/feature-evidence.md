@@ -5,8 +5,16 @@
 > deployed, where it is documented, and — most importantly — **what has actually
 > been verified and by which command**.
 >
-> **Last verified:** 2026-10-20, in the container described in
+> **Last verified:** 2026-11-04, in the container described in
 > [`docs/verification-status.md`](verification-status.md).
+>
+> **Live testnet evidence (2026-11-04):** supply → borrow → interest → repay →
+> withdraw, pause enforcement, and both liquidation directions were executed
+> against the deployed contracts. Transaction hashes and state readings:
+> [`docs/verification/testnet-e2e-2026-11-04.md`](verification/testnet-e2e-2026-11-04.md).
+> That run also **disproved** the documented Q-1 invariant and exposed the
+> absence of on-chain asset custody — read [`docs/security.md`](security.md)
+> before relying on any row below that says "verified".
 
 ## Legend
 
@@ -24,23 +32,23 @@
 
 ### 1.1 Supply / withdraw (share-priced deposits)
 
-| Aspect          | Detail                                                                                                                                                                                           |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Implementation  | `contracts/lending/soroban/src/lib.rs` (`supply`, `withdraw`, `deposit_shares_of`, `total_deposit_shares`)                                                                                       |
-| Tests           | 18 `invariant_*` tests in the same file (L-1…L-10 family) + `prop_lending_pool_random_ops` in `contracts/integration-tests/src/property.rs`                                                      |
-| Config / deploy | Asset must be registered with `add_asset` (base rate, slopes, kink, reserve factor, LTV) and a `collateral_vault` + `oracle` address                                                             |
-| Docs            | [`docs/contracts.md`](../docs/contracts.md), [`docs/invariants.md`](../docs/invariants.md) §4                                                                                                    |
-| Verification    | ⚠️ **Source-verified only** — 113 Rust `#[test]` functions exist; `cargo test --workspace --locked` could not be executed here (no Rust toolchain). CI runs it on Rust 1.91.0 / `wasm32v1-none`. |
+| Aspect          | Detail                                                                                                                                                                                                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Implementation  | `contracts/lending/soroban/src/lib.rs` (`supply`, `withdraw`, `deposit_shares_of`, `total_deposit_shares`)                                                                                                                                                                                        |
+| Tests           | 18 `invariant_*` tests in the same file (L-1…L-10 family) + `prop_lending_pool_random_ops` in `contracts/integration-tests/src/property.rs`                                                                                                                                                       |
+| Config / deploy | Asset must be registered with `add_asset` (base rate, slopes, kink, reserve factor, LTV) and a `collateral_vault` + `oracle` address                                                                                                                                                              |
+| Docs            | [`docs/contracts.md`](../docs/contracts.md), [`docs/invariants.md`](../docs/invariants.md) §4                                                                                                                                                                                                     |
+| Verification    | 🟡 **Executed live, but accounting-only.** `cargo test --workspace --locked` → **112 passed, 0 failed** on Rust 1.91.0 (2026-11-04). Live testnet: `supply`/`withdraw` move internal share balances only — no tokens are transferred (see NO-ASSET-CUSTODY in [`docs/security.md`](security.md)). |
 
 ### 1.2 Borrow / repay (index-based debt)
 
-| Aspect          | Detail                                                                                                                 |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Implementation  | `contracts/lending/soroban/src/lib.rs` (`borrow`, `repay`, `borrow_raw`, `repay_on_behalf`, `debt_of`, `borrow_index`) |
-| Tests           | `invariant_*` tests (L-2, L-3, L-6, L-8, L-10), `prop_repay_bounded`, `prop_health_factor_monotonic`                   |
-| Config / deploy | Oracle price for the collateral asset; LTV ≤ 10 000 bps                                                                |
-| Docs            | [`docs/invariants.md`](../docs/invariants.md) §4, [`docs/rate-model.md`](../docs/rate-model.md)                        |
-| Verification    | ⚠️ Source-verified only (see 1.1)                                                                                      |
+| Aspect          | Detail                                                                                                                                                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Implementation  | `contracts/lending/soroban/src/lib.rs` (`borrow`, `repay`, `borrow_raw`, `repay_on_behalf`, `debt_of`, `borrow_index`)                                                                                                                       |
+| Tests           | `invariant_*` tests (L-2, L-3, L-6, L-8, L-10), `prop_repay_bounded`, `prop_health_factor_monotonic`                                                                                                                                         |
+| Config / deploy | Oracle price for the collateral asset; LTV ≤ 10 000 bps                                                                                                                                                                                      |
+| Docs            | [`docs/invariants.md`](../docs/invariants.md) §4, [`docs/rate-model.md`](../docs/rate-model.md)                                                                                                                                              |
+| Verification    | 🟡 Executed live on testnet: `borrow` → `debt_of = 500_000_000`, over-borrow beyond LTV reverted with debt unchanged, `repay` cleared the debt to 0, interest accrued (`+14` stroops over ~30 ledgers). Accounting-only (no token transfer). |
 
 ### 1.3 Collateral vault
 
@@ -74,13 +82,13 @@
 
 ### 1.6 Liquidation engine
 
-| Aspect          | Detail                                                                                                                           |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Implementation  | `contracts/liquidation/soroban/src/lib.rs` (`liquidate`, close factor, bonus, fee)                                               |
-| Tests           | 6 `invariant_*` tests (Q-3…Q-9) + `contracts/integration-tests/src/cross_contract.rs` for the atomic repay→seize path (Q-5, Q-6) |
-| Config / deploy | `close_factor_bps`, `liquidation_bonus_bps`, `fee_bps`; the liquidation contract must be authorised by the lending pool          |
-| Docs            | [`docs/invariants.md`](../docs/invariants.md) §5, [`docs/risk.md`](../docs/risk.md)                                              |
-| Verification    | ⚠️ Source-verified only                                                                                                          |
+| Aspect          | Detail                                                                                                                                                                                                                                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Implementation  | `contracts/liquidation/soroban/src/lib.rs` (`liquidate`, close factor, bonus, fee)                                                                                                                                                                                                                                             |
+| Tests           | 6 `invariant_*` tests (Q-3…Q-9) + `contracts/integration-tests/src/cross_contract.rs` for the atomic repay→seize path (Q-5, Q-6)                                                                                                                                                                                               |
+| Config / deploy | `close_factor_bps`, `liquidation_bonus_bps`, `fee_bps`; the liquidation contract must be authorised by the lending pool                                                                                                                                                                                                        |
+| Docs            | [`docs/invariants.md`](../docs/invariants.md) §5, [`docs/risk.md`](../docs/risk.md)                                                                                                                                                                                                                                            |
+| Verification    | ❌ **Live run disproved the design.** A solvent position ($100.01 collateral / $60 debt) was liquidated; an insolvent one ($10.00 / $16) could not be. `liquidate` compares raw units, not oracle values. Evidence: tx `0a8a4cfb…` in [`docs/verification/testnet-e2e-2026-11-04.md`](verification/testnet-e2e-2026-11-04.md). |
 
 ### 1.7 Oracle
 
