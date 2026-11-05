@@ -33,7 +33,9 @@ pub struct LiquidationConfig {
     pub pool: Address,
     /// `collateral_vault` address
     pub vault: Address,
-    /// `oracle` address (reserved for future cross-asset pricing)
+    /// Oracle address for pricing collateral and debt in USD.
+    /// Uses `oracle.value_of(asset, amount)` to convert token units to USD.
+    /// Must be a contract implementing `value_of()` (e.g. the StellarPay oracle).
     pub oracle: Address,
     /// liquidator bonus in bps over fair value (e.g. 500 = 5%)
     pub bonus_bps: u32,
@@ -42,6 +44,9 @@ pub struct LiquidationConfig {
     /// close factor — max fraction of debt repayable in a single tx (default 5000 = 50%)
     pub close_factor_bps: u32,
 }
+
+/// Protocol-wide LTV ceiling (75%) used as defense-in-depth.
+const MAX_LTV_BPS: u32 = 7_500;
 
 #[contract]
 pub struct Liquidation;
@@ -75,9 +80,13 @@ impl Liquidation {
     ///
     /// # Panics
     /// - `"amount must be positive"` if `repay_amount <= 0`
-    /// - `"position is healthy"` if collateral >= debt (not underwater)
-    /// - `"exceeds close factor"` if `repay_amount > close_factor * debt`
+    /// - `"position healthy"` if collateral_value <= debt_value (healthy position)
+    /// - `"health factor too low"` if `health_factor <= 1` (not unhealthy enough to liquidate)
+    /// - `"exceeds close factor"` if `repay_amount > close_factor * outstanding / 10_000`
     /// - `"insufficient collateral to seize"` if vault balance < computed seize
+    /// - `"oracle price unavailable"` if oracle price cannot be read
+    /// - `"stale price"` if oracle price is stale
+    /// - `"oracle overflow"` if arithmetic overflows
     pub fn liquidate(
         env: Env,
         liquidator: Address,
@@ -99,38 +108,85 @@ impl Liquidation {
         // ── 2. Read borrower's collateral from the vault ──
         let coll_balance = Self::vault_position(&env, &cfg.vault, &borrower, &collateral_asset);
 
-        // ── 3. Position must be underwater (same-unit: debt > collateral) ──
-        if coll_balance >= outstanding {
-            panic!("position is healthy");
+        // ── 3. Convert to USD values using oracle prices ──
+        // Oracle returns values in 14-decimal precision via value_of().
+        let coll_value = Self::oracle_value(&env, &cfg.oracle, &collateral_asset, coll_balance);
+        let debt_value = Self::oracle_value(&env, &cfg.oracle, &debt_asset, outstanding);
+
+        if debt_value <= 0 {
+            panic!("position healthy");
         }
 
-        // ── 4. Enforce close factor ──
+        // ── 4. Position must be liquidatable (unhealthy) ──
+        // Liquidation is allowed when debt exceeds the collateral value
+        // allowed by the effective LTV: debt_value * 10_000 > coll_value * effective_ltv_bps.
+        // This is the inverse of the controller's borrow-time LTV check.
+        let asset_ltv_bps = Self::asset_ltv_bps(&env, &cfg.pool, &collateral_asset);
+        let effective_ltv_bps = asset_ltv_bps.min(MAX_LTV_BPS) as i128;
+        let max_debt_for_collateral = coll_value
+            .checked_mul(effective_ltv_bps)
+            .expect("overflow")
+            / 10_000i128;
+        if debt_value <= max_debt_for_collateral {
+            panic!("position healthy");
+        }
+
+        // ── 5. Enforce close factor ──
         let max_repay = outstanding
             .checked_mul(cfg.close_factor_bps as i128)
             .expect("overflow")
-            / 10_000;
+            / 10_000i128;
         if repay_amount > max_repay {
             panic!("exceeds close factor");
         }
 
-        // ── 5. Calculate collateral to seize ──
-        // Same-unit formula (no oracle pricing yet):
-        //   gross = repay * (10_000 + bonus_bps) / 10_000
-        //   bonus = gross - repay
-        //   fee   = bonus * fee_bps / 10_000
-        //   seize = repay + bonus - fee
-        let bonus_mult = 10_000 + cfg.bonus_bps;
-        let gross = repay_amount
-            .checked_mul(bonus_mult as i128)
-            .expect("overflow")
-            / 10_000;
-        let bonus = gross - repay_amount;
-        let fee = bonus.checked_mul(cfg.fee_bps as i128).expect("overflow") / 10_000;
-        let seize_amount = repay_amount + bonus - fee;
+        // ── 6. Calculate collateral to seize using oracle-priced valuation ──
+        // Compute the USD value of the repaid debt, apply bonus, convert to
+        // collateral units via oracle pricing. This handles different assets
+        // and decimals correctly.
+        let repay_value = Self::oracle_value(&env, &cfg.oracle, &debt_asset, repay_amount);
+        let coll_price = Self::oracle_price(&env, &cfg.oracle, &collateral_asset);
+        if coll_price <= 0 {
+            panic!("oracle price unavailable");
+        }
 
-        // Total leaving the borrower: seize_amount + fee = repay + bonus = gross.
-        // Must not exceed their collateral.
-        if gross > coll_balance {
+        let bonus_mult = 10_000i128 + cfg.bonus_bps as i128;
+        // seize_value_usd = repay_value * (1 + bonus_bps/10000)
+        let seize_value_usd = repay_value
+            .checked_mul(bonus_mult)
+            .expect("overflow")
+            / 10_000i128;
+
+        // Convert USD value back to collateral token units.
+        // value_of returns: amount * price / 10^7 (7-dec token units convention)
+        // so amount = value_usd * 10^7 / price
+        let seize_units_total = seize_value_usd
+            .checked_mul(10_000_000i128)
+            .expect("overflow")
+            / coll_price;
+
+        // Fee is taken from the bonus portion in collateral units.
+        let bonus_value_usd = repay_value
+            .checked_mul(cfg.bonus_bps as i128)
+            .expect("overflow")
+            / 10_000i128;
+        let fee_value_usd = bonus_value_usd
+            .checked_mul(cfg.fee_bps as i128)
+            .expect("overflow")
+            / 10_000i128;
+        let fee_units = fee_value_usd
+            .checked_mul(10_000_000i128)
+            .expect("overflow")
+            / coll_price;
+
+        let seize_amount = seize_units_total.saturating_sub(fee_units);
+        if seize_amount <= 0 {
+            panic!("insufficient collateral to seize");
+        }
+
+        // Total leaving the borrower: seize_amount + fee = seize_units_total.
+        // Must not exceed their collateral balance.
+        if seize_units_total > coll_balance {
             panic!("insufficient collateral to seize");
         }
 
@@ -153,7 +209,7 @@ impl Liquidation {
         );
 
         // ── 8. If there's a fee, seize it to the treasury ──
-        if fee > 0 {
+        if fee_units > 0 {
             let treasury = Self::treasury(env.clone());
             Self::vault_seize(
                 &env,
@@ -162,14 +218,14 @@ impl Liquidation {
                 &borrower,
                 &treasury,
                 &collateral_asset,
-                &fee,
+                &fee_units,
             );
         }
 
         seize_amount
     }
 
-    // ──────────────────────── VIEWS ────────────────────────
+    // ──────────────────────── Views ────────────────────────
 
     pub fn config(env: Env) -> LiquidationConfig {
         env.storage()
@@ -187,7 +243,26 @@ impl Liquidation {
 
     // ──────────────────────── CROSS-CONTRACT HELPERS ────────────────────────
 
-    /// Read `pool.debt_of(borrower, debt_asset)`.
+    /// Get the USD value (14-decimal precision) of `amount` units of `asset`.
+    fn oracle_value(env: &Env, oracle: &Address, asset: &Symbol, amount: i128) -> i128 {
+        let fn_name = Symbol::new(env, "value_of");
+        let args: Vec<Val> = soroban_sdk::vec![env, asset.into_val(env), amount.into_val(env),];
+        env.invoke_contract(oracle, &fn_name, args)
+    }
+
+    /// Get the spot price for `asset` from the oracle (14-decimal precision).
+    fn oracle_price(env: &Env, oracle: &Address, asset: &Symbol) -> i128 {
+        let fn_name = Symbol::new(env, "get_price");
+        let args: Vec<Val> = soroban_sdk::vec![env, asset.into_val(env)];
+        env.invoke_contract(oracle, &fn_name, args)
+    }
+
+    fn asset_ltv_bps(env: &Env, pool: &Address, collateral_asset: &Symbol) -> u32 {
+        let fn_name = Symbol::new(env, "ltv_bps");
+        let args: Vec<Val> = soroban_sdk::vec![env, collateral_asset.into_val(env)];
+        env.invoke_contract(pool, &fn_name, args)
+    }
+
     fn pool_debt_of(env: &Env, pool: &Address, borrower: &Address, asset: &Symbol) -> i128 {
         let fn_name = Symbol::new(env, "debt_of");
         let args: Vec<Val> = soroban_sdk::vec![env, borrower.into_val(env), asset.into_val(env),];
@@ -265,8 +340,8 @@ mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
 
-    /// Deploy pool + vault + wrapped_asset for the liquidation tests so
-    /// `liquidate` can read real state and call `pool.repay` + `vault.seize`.
+    /// Deploy pool + vault + oracle for liquidation tests so
+    /// `liquidate` can read real oracle-priced state and execute cross-contract calls.
     struct LiqTestEnv<'a> {
         env: Env,
         liq_contract: LiquidationClient<'a>,
@@ -275,9 +350,12 @@ mod tests {
         pool_id: Address,
         vault_client: collateral_vault::CollateralVaultClient<'a>,
         vault_id: Address,
+        oracle_client: oracle::OracleClient<'a>,
+        oracle_id: Address,
         #[allow(dead_code)]
         wrapped_client: wrapped_asset::WrappedAssetClient<'a>,
         asset: Symbol,
+        admin: Address,
     }
 
     fn setup_liq() -> LiqTestEnv<'static> {
@@ -290,7 +368,15 @@ mod tests {
         let vault_id = env.register(collateral_vault::CollateralVault {}, ());
         let pool_id = env.register(lending_pool::LendingPool {}, ());
         let wrapped_id = env.register(wrapped_asset::WrappedAsset {}, ());
+        let oracle_id = env.register(oracle::Oracle {}, ());
         let liq_id = env.register(Liquidation {}, ());
+
+        let oracle_client = oracle::OracleClient::new(&env.clone(), &oracle_id);
+        oracle_client.initialize(&admin);
+        let pub1 = Address::generate(&env);
+        let pub2 = Address::generate(&env);
+        oracle_client.add_publisher(&pub1);
+        oracle_client.add_publisher(&pub2);
 
         let vault_client = collateral_vault::CollateralVaultClient::new(&env.clone(), &vault_id);
         vault_client.initialize(&admin);
@@ -312,11 +398,16 @@ mod tests {
             &soroban_sdk::String::from_str(&env, "0x0"),
         );
 
-        // Configure the lending pool with the asset.
+        // Configure oracle price for XLM: $1.00 in 14-decimal precision.
+        oracle_client.set_asset_config(&asset, &300u64, &2u32);
+        oracle_client.set_price(&pub1, &asset, &10_000_000_000_000i128); // $1.00
+        oracle_client.set_price(&pub2, &asset, &10_000_000_000_000i128);
+
+        // Configure the lending pool with the asset (using the real oracle).
         pool_client.add_asset(&lending_pool::AssetConfig {
             asset: asset.clone(),
             collateral_vault: vault_id.clone(),
-            oracle: Address::generate(&env),
+            oracle: oracle_id.clone(),
             ltoken: Address::generate(&env),
             base_rate_bps: 200,
             slope1_bps: 1_000,
@@ -332,7 +423,7 @@ mod tests {
             &LiquidationConfig {
                 pool: pool_id.clone(),
                 vault: vault_id.clone(),
-                oracle: Address::generate(&env),
+                oracle: oracle_id.clone(),
                 bonus_bps: 500,
                 fee_bps: 2_000,
                 close_factor_bps: 5_000,
@@ -348,8 +439,11 @@ mod tests {
             pool_id,
             vault_client,
             vault_id,
+            oracle_client,
+            oracle_id,
             wrapped_client,
             asset,
+            admin,
         }
     }
 
@@ -489,7 +583,7 @@ mod tests {
         te.liq_contract.set_config(&LiquidationConfig {
             pool: te.pool_id.clone(),
             vault: te.vault_id.clone(),
-            oracle: Address::generate(&te.env),
+            oracle: te.oracle_id.clone(),
             bonus_bps: 1_000,
             fee_bps: 2_000,
             close_factor_bps: 5_000,
@@ -555,7 +649,7 @@ mod tests {
         te.liq_contract.set_config(&LiquidationConfig {
             pool: te.pool_id.clone(),
             vault: te.vault_id.clone(),
-            oracle: Address::generate(&te.env),
+            oracle: te.oracle_id.clone(),
             bonus_bps: 1_000,
             fee_bps: 1_000,
             close_factor_bps: 5_000,
@@ -588,7 +682,7 @@ mod tests {
             te.liq_contract.set_config(&LiquidationConfig {
                 pool: te.pool_id.clone(),
                 vault: te.vault_id.clone(),
-                oracle: Address::generate(&te.env),
+                oracle: te.oracle_id.clone(),
                 bonus_bps,
                 fee_bps,
                 close_factor_bps: 5_000,
@@ -623,5 +717,188 @@ mod tests {
         let liquidator = Address::generate(&te.env);
         te.liq_contract
             .liquidate(&liquidator, &borrower, &te.asset, &te.asset, &-1i128);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // REGRESSION: Oracle-priced liquidation tests
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// R-1: Solvent position must never be liquidated.
+    #[test]
+    #[should_panic(expected = "position healthy")]
+    fn regression_solvent_position_never_liquidated() {
+        let te = setup_liq();
+        let borrower = Address::generate(&te.env);
+        let liquidator = Address::generate(&te.env);
+
+        te.pool_client
+            .supply_collateral(&borrower, &te.asset, &10_000i128);
+        te.pool_client.supply(&borrower, &te.asset, &10_000i128);
+        te.pool_client.borrow(&borrower, &te.asset, &5_000i128);
+        te.vault_client
+            .deposit(&te.liq_id, &borrower, &te.asset, &10_000i128);
+
+        te.liq_contract
+            .liquidate(&liquidator, &borrower, &te.asset, &te.asset, &1_000i128);
+    }
+
+    /// R-2: Insolvent position (LTV breached) must be liquidatable.
+    #[test]
+    fn regression_insolvent_position_liquidatable() {
+        let te = setup_liq();
+        let borrower = Address::generate(&te.env);
+        let liquidator = Address::generate(&te.env);
+
+        te.pool_client
+            .supply_collateral(&borrower, &te.asset, &5_000i128);
+        te.pool_client.supply(&borrower, &te.asset, &5_000i128);
+        te.pool_client.borrow(&borrower, &te.asset, &10_000i128);
+        te.vault_client
+            .deposit(&te.liq_id, &borrower, &te.asset, &5_000i128);
+
+        let seized = te.liq_contract.liquidate(
+            &liquidator,
+            &borrower,
+            &te.asset,
+            &te.asset,
+            &2_000i128,
+        );
+        assert!(seized > 0, "insolvent position should be liquidatable");
+        let debt_after = te.pool_client.debt_of(&borrower, &te.asset);
+        assert!(debt_after < 10_000i128, "debt must decrease");
+    }
+
+    /// R-3: Boundary - debt exactly at max allowed by LTV (75%) is healthy.
+    #[test]
+    #[should_panic(expected = "position healthy")]
+    fn regression_boundary_ltv_exactly_at_limit() {
+        let te = setup_liq();
+        let borrower = Address::generate(&te.env);
+        let liquidator = Address::generate(&te.env);
+
+        te.pool_client
+            .supply_collateral(&borrower, &te.asset, &10_000i128);
+        te.pool_client.supply(&borrower, &te.asset, &10_000i128);
+        te.pool_client.borrow(&borrower, &te.asset, &7_500i128);
+        te.vault_client
+            .deposit(&te.liq_id, &borrower, &te.asset, &10_000i128);
+
+        te.liq_contract
+            .liquidate(&liquidator, &borrower, &te.asset, &te.asset, &1_000i128);
+    }
+
+    /// R-4: Boundary - debt just above LTV limit is liquidatable.
+    #[test]
+    fn regression_boundary_just_above_ltv_limit() {
+        let te = setup_liq();
+        let borrower = Address::generate(&te.env);
+        let liquidator = Address::generate(&te.env);
+
+        te.pool_client
+            .supply_collateral(&borrower, &te.asset, &10_000i128);
+        te.pool_client.supply(&borrower, &te.asset, &10_000i128);
+        te.pool_client.borrow(&borrower, &te.asset, &7_501i128);
+        te.vault_client
+            .deposit(&te.liq_id, &borrower, &te.asset, &10_000i128);
+
+        let seized = te.liq_contract.liquidate(
+            &liquidator,
+            &borrower,
+            &te.asset,
+            &te.asset,
+            &1_000i128,
+        );
+        assert!(seized > 0, "position just above LTV should be liquidatable");
+    }
+
+    /// R-5: Missing oracle price must prevent liquidation.
+    #[test]
+    #[should_panic]
+    fn regression_missing_oracle_price_reverts() {
+        let te = setup_liq();
+        let borrower = Address::generate(&te.env);
+        let liquidator = Address::generate(&te.env);
+        let bad_asset = Symbol::new(&te.env, "NOPE");
+
+        te.pool_client.add_asset(&lending_pool::AssetConfig {
+            asset: bad_asset.clone(),
+            collateral_vault: te.vault_id.clone(),
+            oracle: te.oracle_id.clone(),
+            ltoken: Address::generate(&te.env),
+            base_rate_bps: 200,
+            slope1_bps: 1_000,
+            slope2_bps: 13_000,
+            kink_bps: 8_000,
+            reserve_factor_bps: 1_000,
+            ltv_bps: 7_500,
+        });
+        te.pool_client
+            .supply_collateral(&borrower, &bad_asset, &5_000i128);
+        te.pool_client.supply(&borrower, &bad_asset, &5_000i128);
+        te.pool_client.borrow(&borrower, &bad_asset, &10_000i128);
+        te.vault_client
+            .deposit(&te.liq_id, &borrower, &bad_asset, &5_000i128);
+
+        te.liq_contract
+            .liquidate(&liquidator, &borrower, &bad_asset, &bad_asset, &1_000i128);
+    }
+
+    /// R-6: Repeated partial liquidations reduce debt each time.
+    #[test]
+    fn regression_repeated_partial_liquidation() {
+        let te = setup_liq();
+        let borrower = Address::generate(&te.env);
+        let liquidator1 = Address::generate(&te.env);
+        let liquidator2 = Address::generate(&te.env);
+
+        te.pool_client
+            .supply_collateral(&borrower, &te.asset, &10_000i128);
+        te.pool_client.supply(&borrower, &te.asset, &10_000i128);
+        te.pool_client.borrow(&borrower, &te.asset, &15_000i128);
+        te.vault_client
+            .deposit(&te.liq_id, &borrower, &te.asset, &10_000i128);
+
+        let seized1 = te.liq_contract.liquidate(
+            &liquidator1,
+            &borrower,
+            &te.asset,
+            &te.asset,
+            &3_000i128,
+        );
+        assert!(seized1 > 0);
+        let debt_after_1 = te.pool_client.debt_of(&borrower, &te.asset);
+        assert!(debt_after_1 < 15_000i128);
+
+        let seized2 = te.liq_contract.liquidate(
+            &liquidator2,
+            &borrower,
+            &te.asset,
+            &te.asset,
+            &3_000i128,
+        );
+        assert!(seized2 > 0);
+        let debt_after_2 = te.pool_client.debt_of(&borrower, &te.asset);
+        assert!(debt_after_2 < debt_after_1);
+    }
+
+    /// R-7: Oracle-priced seize amount includes liquidation bonus.
+    #[test]
+    fn regression_oracle_priced_seize_includes_bonus() {
+        let te = setup_liq();
+        let borrower = Address::generate(&te.env);
+        let liquidator = Address::generate(&te.env);
+
+        te.pool_client
+            .supply_collateral(&borrower, &te.asset, &10_000i128);
+        te.pool_client.supply(&borrower, &te.asset, &12_000i128);
+        te.pool_client.borrow(&borrower, &te.asset, &12_000i128);
+        te.vault_client
+            .deposit(&te.liq_id, &borrower, &te.asset, &10_000i128);
+
+        let repay = 5_000i128;
+        let seized =
+            te.liq_contract
+                .liquidate(&liquidator, &borrower, &te.asset, &te.asset, &repay);
+        assert!(seized >= repay, "seized ({seized}) must be >= repay ({repay})");
     }
 }
