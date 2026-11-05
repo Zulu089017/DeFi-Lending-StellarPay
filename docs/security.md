@@ -33,6 +33,39 @@ Evidence (transaction hashes, state readings) is in
 | **MISSING-USER-ENTRYPOINTS**   | **Medium**   | The controller exposes `supply_collateral` and `borrow` but no `repay`, `withdraw`, or `liquidate` entry point. Users must call `lending_pool` / `liquidation` directly, which bypasses the controller's oracle-based LTV checks for those paths.                                                                     |
 | **BORROW-REQUIRES-COLLATERAL** | **Low**      | `lending_controller.borrow` requires `collateral_amount > 0` and re-deposits every call, so a borrower cannot draw additional debt against an existing position without posting more collateral.                                                                                                                      |
 
+### Remediation status (2026-11-05)
+
+Source-level fixes landed for three of the six findings. **They have not yet
+been re-verified with `cargo`/Soroban in the current environment** (no
+`cargo`/`rustc`/`rustup` on PATH), so the status below is "fixed in source,
+pending toolchain verification" — not "verified fixed".
+
+| ID                            | Status                                   | What changed                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| LIQ-RAW-UNITS / LIQ-NO-ORACLE | **Fixed in source, unverified by cargo** | `liquidation.liquidate` now values collateral and debt via `oracle.value_of`, gates on `debt_value > coll_value * min(pool.ltv_bps, 7500) / 10_000`, and converts the repay value (+ bonus, − fee) back into collateral units with `oracle.get_price`. Regression tests R-1…R-7 cover solvent, insolvent, LTV boundary, missing price, repeated partial liquidation and bonus inclusion.                                                                          |
+| ADMIN-NOT-MULTISIG            | **Fixed in source, unverified by cargo** | `require_admin_multisig(approvals)` now enforces a real threshold: `approvals.len() >= threshold`, membership, no duplicates, and `require_auth()` on every listed approver. `add_admin`, `remove_admin`, `set_threshold`, `propose_bridge`, `execute_bridge` and `set_bridge` all take `approvals`. Raising the mint cap requires quorum; tightening it stays single-admin so an emergency brake cannot be blocked. `set_paused` remains single-admin by design. |
+| MISSING-USER-ENTRYPOINTS      | **Fixed in source, unverified by cargo** | Controller gained `repay(user, asset, amount)` (returns the amount actually applied) and `withdraw_collateral(user, asset, amount)`, which aggregates debt across every asset from the new `lending_pool.assets()` view and rejects withdrawals that breach LTV.                                                                                                                                                                                                  |
+| NO-ASSET-CUSTODY              | **Open**                                 | No token moves yet. This is a cross-cutting migration across pool, vault, treasury and every test fixture; see the migration plan below.                                                                                                                                                                                                                                                                                                                          |
+| BORROW-REQUIRES-COLLATERAL    | **Open**                                 | `borrow` still requires `collateral_amount > 0`.                                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+#### NO-ASSET-CUSTODY migration plan (not implemented)
+
+1. Add `token: Address` to `lending_pool::AssetConfig` and
+   `DataKey::Token(asset)` to the collateral vault, set by admin at
+   asset-configuration time.
+2. Pool: `supply`/`withdraw` transfer between user and pool; `borrow` pays out
+   from pool balance; `repay` pulls from the payer; `supply_collateral` moves
+   tokens to the vault.
+3. Vault: `deposit`/`withdraw`/`seize` perform real SAC `transfer` calls
+   (`from.require_auth()` is satisfied by the user's top-level authorization
+   propagating through the controller).
+4. Add a `solvent(asset)` view comparing `token.balance(pool)` with
+   `total_deposit - total_borrow` and a CI/runtime reconciliation check.
+5. Update every test fixture to deploy a Stellar Asset Contract
+   (`env.register_stellar_asset_contract_v2`), mint to users, and assert real
+   balance deltas — this is why the change must land in an environment with a
+   working Rust toolchain.
+
 ### What the live run did **not** cover
 
 - Stale-price rejection: `get_price` uses

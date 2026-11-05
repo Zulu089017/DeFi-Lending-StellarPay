@@ -104,19 +104,24 @@ Verified on Stellar testnet on 2026-11-04 with real transactions
 
 Consequences: solvent borrowers can be liquidated (theft of collateral), and
 insolvent positions cannot be closed (bad debt). Both directions are critical.
-Invariant **Q-1** as written below is therefore false for the current code; the
-Rust tests assert the unit comparison, not the oracle comparison.
+Invariant **Q-1** was false for the code that produced the 2026-11-04 evidence.
+**It was rewritten on 2026-11-05** to value both sides through `oracle.value_of`
+and to gate on `debt_value > coll_value * min(pool.ltv_bps, 7500) / 10_000`;
+regression tests R-1…R-7 assert the oracle comparison (solvent position reverts,
+insolvent position liquidates). The rewrite has **not** been re-run under
+`cargo` yet — the 2026-11-05 environment had no Rust toolchain — so Q-1 is
+"implemented, pending toolchain verification".
 
 ## 5. Liquidation Engine (`liquidation`)
 
-| #   | Invariant                                                                                                                                              | Type                      | Status |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- | ------ |
-| Q-1 | `liquidate(borrower, ...)` reverts if `HF(borrower) >= 1` — ❌ **NOT IMPLEMENTED: the code compares raw token units and ignores the oracle (see §5a)** | Only-liquidate-underwater | ✅     |
-| Q-2 | `liquidate` reverts if `repay_amount > close_factor_bps / 10_000 * debt_of(borrower, debt_asset)`                                                      | Close-factor              | ✅     |
-| Q-3 | `liquidator_share = repay + bonus - fee`, where `fee = fee_bps * bonus / 10_000`                                                                       | Algebraic                 | ✅     |
-| Q-4 | The protocol never receives more than `fee_bps * bonus / 10_000` of seized collateral                                                                  | Fee bounded               | ✅     |
-| Q-5 | **(Closed 2026-08)** The on-chain engine cross-calls `lending_pool.repay_on_behalf` and `collateral_vault.seize` in a single transaction               | Atomicity                 | ✅     |
-| Q-6 | **(Closed 2026-08)** `lending_pool.repay_on_behalf` succeeds before `collateral_vault.seize` runs                                                      | Ordering                  | ✅     |
+| #   | Invariant                                                                                                                                                                                                       | Type                      | Status     |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------- |
+| Q-1 | `liquidate(borrower, ...)` reverts unless `debt_value > coll_value * min(pool.ltv_bps, 7500) / 10_000`, both valued via `oracle.value_of` — ⚠️ **rewritten 2026-11-05, pending `cargo` verification (see §5a)** | Only-liquidate-underwater | ✅ (unrun) |
+| Q-2 | `liquidate` reverts if `repay_amount > close_factor_bps / 10_000 * debt_of(borrower, debt_asset)`                                                                                                               | Close-factor              | ✅         |
+| Q-3 | `liquidator_share = repay + bonus - fee`, where `fee = fee_bps * bonus / 10_000`                                                                                                                                | Algebraic                 | ✅         |
+| Q-4 | The protocol never receives more than `fee_bps * bonus / 10_000` of seized collateral                                                                                                                           | Fee bounded               | ✅         |
+| Q-5 | **(Closed 2026-08)** The on-chain engine cross-calls `lending_pool.repay_on_behalf` and `collateral_vault.seize` in a single transaction                                                                        | Atomicity                 | ✅         |
+| Q-6 | **(Closed 2026-08)** `lending_pool.repay_on_behalf` succeeds before `collateral_vault.seize` runs                                                                                                               | Ordering                  | ✅         |
 
 ## 6. Lending Controller (`lending_controller`)
 

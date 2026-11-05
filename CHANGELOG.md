@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **Oracle-priced liquidation (LIQ-RAW-UNITS / LIQ-NO-ORACLE).**
+  `liquidation.liquidate` no longer compares raw token units. It values the
+  borrower's debt and collateral through `oracle.value_of`, liquidates only
+  when `debt_value > coll_value * min(pool.ltv_bps, 7500) / 10_000`, and
+  converts the repay value (+ `bonus_bps`, − protocol fee) back to collateral
+  units with `oracle.get_price`. `LiquidationConfig` gained an `oracle`
+  address. Regression tests R-1…R-7 cover solvent positions, insolvent
+  positions, the LTV boundary in both directions, a missing oracle price,
+  repeated partial liquidations and bonus inclusion.
+- **Real N-of-M admin threshold (ADMIN-NOT-MULTISIG).**
+  `lending_controller.require_admin_multisig` now takes an explicit
+  `approvals` list and enforces (a) `len >= threshold`, (b) every approver is
+  a current admin, (c) no duplicates, and (d) a valid `require_auth` for each
+  approver. `add_admin`, `remove_admin`, `set_threshold`, `propose_bridge`,
+  `execute_bridge` and `set_bridge` are all quorum-gated; raising the mint
+  rate cap requires quorum while tightening it stays single-admin so the
+  emergency brake cannot be blocked. `set_paused` remains intentionally
+  single-admin.
+- **Controller `repay` and `withdraw_collateral` (MISSING-USER-ENTRYPOINTS).**
+  `lending_controller.repay` routes to the pool and returns the amount
+  actually applied; `withdraw_collateral` aggregates the user's debt across
+  every asset from the new `lending_pool.assets()` view and rejects
+  withdrawals that would breach `min(asset ltv_bps, 7500)`. New tests cover
+  full/partial repayment, over-repayment capping, healthy and LTV-breaching
+  withdrawals, over-withdrawal, and the multisig positive/negative paths.
+
+> The three contract fixes above are **not yet re-verified with `cargo`** — the
+> 2026-11-05 session had no Rust toolchain (`cargo`/`rustc`/`rustup` absent), so
+> the new Rust tests are written but unexecuted. `pnpm test`, `pnpm typecheck`,
+> `pnpm lint` (TS workspace) and `npx hardhat test` (17 passing) were run and
+> pass.
+
 - **Fixed `lending_pool` interest accrual never running.** `add_asset` did not
   seed the `LastAccrual` clock and `accrue_interest` treats a missing key as
   "now", so the first accrual always no-opped and the borrow index never grew.

@@ -65,12 +65,19 @@ runs 35/35; the file was not modified and no test or check was weakened.
 The live run did not merely pass — it surfaced defects. These are recorded in
 [`docs/security.md`](security.md) and [`docs/invariants.md`](invariants.md):
 
-| ID                            | Severity | Status                                               |
-| ----------------------------- | -------- | ---------------------------------------------------- |
-| LIQ-RAW-UNITS / LIQ-NO-ORACLE | Critical | **Open** — liquidation prices in raw units, not USD  |
-| NO-ASSET-CUSTODY              | High     | **Open** — no token transfers anywhere on Stellar    |
-| ADMIN-NOT-MULTISIG            | Medium   | **Open** — admin threshold stored but never enforced |
-| MISSING-USER-ENTRYPOINTS      | Medium   | **Open** — controller has no repay/withdraw          |
+| ID                            | Severity | Status                                                                                                  |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| LIQ-RAW-UNITS / LIQ-NO-ORACLE | Critical | **Fixed in source (2026-11-05), pending cargo verification** — oracle-priced valuation + LTV gate       |
+| NO-ASSET-CUSTODY              | High     | **Open** — no token transfers anywhere on Stellar (migration plan in `docs/security.md`)                |
+| ADMIN-NOT-MULTISIG            | Medium   | **Fixed in source (2026-11-05), pending cargo verification** — `approvals` quorum enforced              |
+| MISSING-USER-ENTRYPOINTS      | Medium   | **Fixed in source (2026-11-05), pending cargo verification** — controller `repay`/`withdraw_collateral` |
+
+> "Fixed in source" means the change is committed to the working tree and
+> reviewed by inspection only. The 2026-11-05 session had no Rust toolchain
+> (`cargo`/`rustc`/`rustup` absent), so `cargo test --workspace` could not be
+> re-run and the new Rust tests are unexecuted. The TypeScript workspace
+> (`pnpm test`, `pnpm typecheck`, `pnpm lint`) and the Hardhat suite
+> (`npx hardhat test`, 17 passing) do pass.
 
 Evidence:
 [`docs/verification/testnet-e2e-2026-11-04.md`](verification/testnet-e2e-2026-11-04.md)
