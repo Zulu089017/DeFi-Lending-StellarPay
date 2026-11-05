@@ -68,7 +68,7 @@
 >
 > **✅ Status of the invariant tests in this repo.** All invariants below now
 > have executing tests. On the pinned toolchain (Rust 1.91.0, soroban-sdk
-> 27.0.4, `wasm32v1-none`), `cargo test --workspace --locked` runs the full
+> 27.0.6, `wasm32v1-none`), `cargo test --workspace --locked` runs the full
 > suite — zero failures. `invariant_*`-named tests: 18 lending pool (L-1…L-16,
 > incl. L-10 sub-cases), 6 liquidation (Q-3…Q-9, with Q-1/Q-2 covered by
 > `test_healthy_position_reverts` / `test_close_factor_enforced`), 6 controller
@@ -77,17 +77,51 @@
 > (2026-08) along with the `LastAccrual` initialization fix they exposed.
 > Migration history:
 > [`contracts/BUILD_ENV_NOTES.md`](../contracts/BUILD_ENV_NOTES.md).
+>
+> **Counts as of 2026-10-20.** The workspace contains **113 `#[test]`
+> functions**, of which **42 are named `invariant_*`** (18 lending pool, 6
+> liquidation, 6 controller, 4 oracle, 4 collateral vault, 4 wrapped asset) —
+> the breakdown above matches the source. The remaining 71 are unit,
+> cross-contract (`contracts/integration-tests/src/cross_contract.rs`),
+> governance/rewards and fuzz-helper tests. See
+> [`docs/verification-status.md`](verification-status.md) for which of these
+> were executed in the last verification pass.
+
+## 5a. Liquidation — known violation (found 2026-11-04)
+
+The engine does **not** price positions. `liquidation.liquidate` compares
+`vault.position(borrower, collateral_asset)` against
+`pool.debt_of(borrower, debt_asset)` as raw integers, so the outcome depends on
+the assets' nominal units rather than their value.
+
+Verified on Stellar testnet on 2026-11-04 with real transactions
+(`docs/verification/testnet-e2e-2026-11-04.json`):
+
+| Scenario                                                   | Expected            | Observed                            |
+| ---------------------------------------------------------- | ------------------- | ----------------------------------- |
+| $100.01 collateral, $60 debt (solvent, LTV 60%)            | `liquidate` reverts | **liquidated** (tx `0a8a4cfb…`)     |
+| $10.00 collateral, $16 debt after a price drop (insolvent) | liquidated          | **reverts** (`position is healthy`) |
+
+Consequences: solvent borrowers can be liquidated (theft of collateral), and
+insolvent positions cannot be closed (bad debt). Both directions are critical.
+Invariant **Q-1** was false for the code that produced the 2026-11-04 evidence.
+**It was rewritten on 2026-11-05** to value both sides through `oracle.value_of`
+and to gate on `debt_value > coll_value * min(pool.ltv_bps, 7500) / 10_000`;
+regression tests R-1…R-7 assert the oracle comparison (solvent position reverts,
+insolvent position liquidates). The rewrite has **not** been re-run under
+`cargo` yet — the 2026-11-05 environment had no Rust toolchain — so Q-1 is
+"implemented, pending toolchain verification".
 
 ## 5. Liquidation Engine (`liquidation`)
 
-| #   | Invariant                                                                                                                                | Type                      | Status |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------ |
-| Q-1 | `liquidate(borrower, ...)` reverts if `HF(borrower) >= 1`                                                                                | Only-liquidate-underwater | ✅     |
-| Q-2 | `liquidate` reverts if `repay_amount > close_factor_bps / 10_000 * debt_of(borrower, debt_asset)`                                        | Close-factor              | ✅     |
-| Q-3 | `liquidator_share = repay + bonus - fee`, where `fee = fee_bps * bonus / 10_000`                                                         | Algebraic                 | ✅     |
-| Q-4 | The protocol never receives more than `fee_bps * bonus / 10_000` of seized collateral                                                    | Fee bounded               | ✅     |
-| Q-5 | **(Closed 2026-08)** The on-chain engine cross-calls `lending_pool.repay_on_behalf` and `collateral_vault.seize` in a single transaction | Atomicity                 | ✅     |
-| Q-6 | **(Closed 2026-08)** `lending_pool.repay_on_behalf` succeeds before `collateral_vault.seize` runs                                        | Ordering                  | ✅     |
+| #   | Invariant                                                                                                                                                                                                       | Type                      | Status     |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------- |
+| Q-1 | `liquidate(borrower, ...)` reverts unless `debt_value > coll_value * min(pool.ltv_bps, 7500) / 10_000`, both valued via `oracle.value_of` — ⚠️ **rewritten 2026-11-05, pending `cargo` verification (see §5a)** | Only-liquidate-underwater | ✅ (unrun) |
+| Q-2 | `liquidate` reverts if `repay_amount > close_factor_bps / 10_000 * debt_of(borrower, debt_asset)`                                                                                                               | Close-factor              | ✅         |
+| Q-3 | `liquidator_share = repay + bonus - fee`, where `fee = fee_bps * bonus / 10_000`                                                                                                                                | Algebraic                 | ✅         |
+| Q-4 | The protocol never receives more than `fee_bps * bonus / 10_000` of seized collateral                                                                                                                           | Fee bounded               | ✅         |
+| Q-5 | **(Closed 2026-08)** The on-chain engine cross-calls `lending_pool.repay_on_behalf` and `collateral_vault.seize` in a single transaction                                                                        | Atomicity                 | ✅         |
+| Q-6 | **(Closed 2026-08)** `lending_pool.repay_on_behalf` succeeds before `collateral_vault.seize` runs                                                                                                               | Ordering                  | ✅         |
 
 ## 6. Lending Controller (`lending_controller`)
 
@@ -146,7 +180,7 @@
 
 | #   | Invariant                                                                                                                         | Type             |
 | --- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| X-1 | `Σ_wTKN_on_stellar == total canonical tokens locked + burned on EVM/source chains`                                                | Backing          |
+| X-1 | `Σ_wTKN_on_stellar + Σ_released == total canonical tokens locked + burned on EVM/source chains`                                   | Backing          |
 | X-2 | Every `wrap` event on Stellar corresponds to exactly one `Locked` or `Burned` event on a source chain (within confirmation depth) | Causality        |
 | X-3 | Every `unwrap` event on Stellar results in exactly one `Released` event on the destination chain                                  | Causality        |
 | X-4 | The canonical API `/v1/markets` total-supply numbers equal the on-chain `lending_pool.total_deposit` summed across assets         | View consistency |
@@ -163,14 +197,35 @@
 
 > **✅ Status of the invariant tests in this repo.** Every invariant in this
 > document now has a corresponding executing test (see § 4 for the breakdown),
-> on the pinned toolchain (Rust 1.91.0, soroban-sdk 27.0.4, `wasm32v1-none`) —
+> on the pinned toolchain (Rust 1.91.0, soroban-sdk 27.0.6, `wasm32v1-none`) —
 > zero failures. Cross-contract integration tests (Q-5, Q-6, C-7, C-8) are
 > **closed (2026-08)** — the liquidation engine calls `pool.repay_on_behalf` and
 > `vault.seize` atomically, and the controller cross-calls `wrapped_asset`,
 > `lending_pool`, `collateral_vault`, and `oracle`. C-1, C-2, C-3, C-5, B-7,
 > L-7, L-8, L-10 through L-16, Q-1 through Q-9, and W-3 through W-6 are all
-> closed. **Remaining coverage gap:** the cross-system invariants X-1, X-2, X-3
-> (backing / causality) have no automated test — they depend on the release
-> pipeline (unwrap → `Bridge.release`), which is not wired end-to-end yet (see
-> `docs/security.md`). Migration history:
-> [`contracts/BUILD_ENV_NOTES.md`](../contracts/BUILD_ENV_NOTES.md).
+> closed.
+>
+> **Cross-system invariants X-1…X-4** now have executable predicate tests in
+> `services/payment/src/invariants.ts` and
+> `services/payment/tests/invariants.test.ts` (including a 2,000-operation
+> randomised X-1 conservation test), and the `unwrap` → `Bridge.release`
+> pipeline that produces their inputs is wired in
+> `services/payment/src/{chains/stellar.ts,release/evmRelease.ts}` with state
+> machine tests.
+>
+> **Live reconciliation (2026-11-01).** `services/indexer/src/reconcile/`
+> evaluates X-1…X-4 against real inputs: on-chain views are read with
+> `simulateTransaction` (`wrapped_asset.total_supply()`,
+> `lending_pool.total_deposit/total_borrow`), and the indexed event tables
+> supply the `wrap`/`unwrap`/`Locked`/`Burned`/`Released` rows. Runs are
+> scheduled, persisted (`ReconciliationRun` + `ReconciliationMismatch`), exposed
+> at `GET /reconcile/latest` and counted in Prometheus. Checks whose inputs are
+> missing are reported as **skipped**, never as passing.
+>
+> **Remaining gaps:** (1) the reconciler has not yet run against a deployment
+> with real activity — the deployed testnet contracts report zero supply and no
+> EVM `Bridge` is deployed, so the checks currently pass on empty state; (2) X-1
+> is an aggregate token check, since the indexer does not model a per-token
+> mapping between EVM tokens and wrapped Stellar assets; (3) the release
+> pipeline still has not been exercised against a live `Bridge`. Migration
+> history: [`contracts/BUILD_ENV_NOTES.md`](../contracts/BUILD_ENV_NOTES.md).

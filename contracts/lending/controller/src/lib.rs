@@ -107,6 +107,21 @@ pub struct Borrow {
     borrow_amount: i128,
 }
 
+#[contractevent(data_format = "vec")]
+pub struct Repay {
+    user: Address,
+    asset: Symbol,
+    amount: i128,
+    repaid: i128,
+}
+
+#[contractevent(data_format = "vec")]
+pub struct WithdrawCollateral {
+    user: Address,
+    asset: Symbol,
+    amount: i128,
+}
+
 #[contract]
 pub struct LendingController;
 
@@ -412,6 +427,135 @@ impl LendingController {
         .publish(&env);
     }
 
+    /// User-facing entry point: repay outstanding debt.
+    ///
+    /// Routes to `lending_pool.repay(user, asset, amount)`, which accrues
+    /// interest up to the current ledger and caps the repayment at the
+    /// outstanding balance. Returns the amount actually repaid (which may be
+    /// less than `amount` when the debt is smaller than the requested
+    /// repayment, e.g. when the user repays in full).
+    ///
+    /// # Panics
+    /// - `"amount must be positive"` if `amount <= 0`
+    /// - `"paused"` if the protocol is paused
+    /// - `"asset not configured"` if the pool has no `AssetConfig` for `asset`
+    pub fn repay(env: Env, user: Address, asset: Symbol, amount: i128) -> i128 {
+        user.require_auth();
+        if amount <= 0 {
+            panic!("amount must be positive");
+        }
+        Self::require_not_paused(&env);
+
+        let pool = Self::lending_pool(&env);
+        let fn_repay = Symbol::new(&env, "repay");
+        let repay_args: Vec<Val> = soroban_sdk::vec![
+            &env,
+            user.into_val(&env),
+            asset.into_val(&env),
+            amount.into_val(&env),
+        ];
+        let repaid: i128 = env.invoke_contract(&pool, &fn_repay, repay_args);
+
+        Repay {
+            user,
+            asset,
+            amount,
+            repaid,
+        }
+        .publish(&env);
+
+        repaid
+    }
+
+    /// User-facing entry point: withdraw previously posted collateral.
+    ///
+    /// Collateral cannot be withdrawn if doing so would push the position
+    /// above the asset's max LTV. The check is deliberately conservative: it
+    /// values the *remaining* amount of `collateral_asset` only (ignoring any
+    /// other collateral the user holds) against the user's *total* debt
+    /// across every asset configured in the pool. Ignoring other collateral
+    /// can only make the check stricter, never more permissive.
+    ///
+    /// # Panics
+    /// - `"amount must be positive"` if `amount <= 0`
+    /// - `"paused"` if the protocol is paused
+    /// - `"insufficient collateral"` if the user's vault position is smaller
+    ///   than `amount`
+    /// - `"health factor too low"` if the withdrawal would breach the LTV
+    pub fn withdraw_collateral(
+        env: Env,
+        user: Address,
+        collateral_asset: Symbol,
+        amount: i128,
+    ) -> i128 {
+        user.require_auth();
+        if amount <= 0 {
+            panic!("amount must be positive");
+        }
+        Self::require_not_paused(&env);
+
+        let vault = Self::collateral_vault(&env);
+        let pool = Self::lending_pool(&env);
+        let oracle_addr = Self::oracle(&env);
+        let controller_addr = env.current_contract_address();
+
+        // (1) Existing collateral position.
+        let fn_position = Symbol::new(&env, "position");
+        let position_args: Vec<Val> = soroban_sdk::vec![
+            &env,
+            user.into_val(&env),
+            collateral_asset.into_val(&env),
+        ];
+        let existing: i128 = env.invoke_contract(&vault, &fn_position, position_args);
+        if existing < amount {
+            panic!("insufficient collateral");
+        }
+        let remaining = existing.checked_sub(amount).expect("overflow");
+
+        // (2) Effective LTV for the collateral asset (capped at the protocol
+        //     ceiling as defence-in-depth against a misconfigured asset).
+        let fn_ltv = Symbol::new(&env, "ltv_bps");
+        let ltv_args: Vec<Val> = soroban_sdk::vec![&env, collateral_asset.into_val(&env)];
+        let asset_ltv_bps: u32 = env.invoke_contract(&pool, &fn_ltv, ltv_args);
+        let effective_ltv_bps = asset_ltv_bps.min(MAX_LTV_BPS);
+
+        // (3) Value the remaining collateral.
+        let remaining_value =
+            Self::oracle_value_of(&env, &oracle_addr, &collateral_asset, &remaining);
+
+        // (4) Aggregate the user's debt across every configured asset.
+        let total_debt_value = Self::total_debt_value(&env, &pool, &oracle_addr, &user);
+
+        // require: total_debt_value * 10_000 <= remaining_value * ltv_bps
+        if total_debt_value.checked_mul(10_000i128).expect("overflow")
+            > remaining_value
+                .checked_mul(effective_ltv_bps as i128)
+                .expect("overflow")
+        {
+            panic!("health factor too low");
+        }
+
+        // (5) Release the collateral in the vault.
+        let fn_withdraw = Symbol::new(&env, "withdraw");
+        let withdraw_args: Vec<Val> = soroban_sdk::vec![
+            &env,
+            controller_addr.into_val(&env),
+            user.into_val(&env),
+            collateral_asset.into_val(&env),
+            amount.into_val(&env),
+        ];
+        let _: () = env.invoke_contract(&vault, &fn_withdraw, withdraw_args);
+
+        WithdrawCollateral {
+            user,
+            asset: collateral_asset,
+            amount,
+        }
+        .publish(&env);
+
+        amount
+    }
+
     // ──────────────────────── Admin ────────────────────────
 
     /// Emergency pause — any single admin can trigger immediately.
@@ -422,24 +566,58 @@ impl LendingController {
         env.storage().instance().set(&DataKey::Paused, &paused);
     }
 
-    /// Configure the per-hour mint cap (circuit breaker, C-3). Admin-only.
-    /// Defaults to `MAX_PER_HOUR` (10B in 7-dec) when unset. Setting a
-    /// smaller cap tightens the bridge's worst-case mint exposure;
-    /// production should tune this per deployment.
-    pub fn set_mint_rate_limit(env: Env, max_per_hour: i128) {
-        Self::require_admin(&env);
+    /// Configure the per-hour mint cap (circuit breaker, C-3).
+    /// Defaults to `MAX_PER_HOUR` (10B in 7-dec) when unset.
+    ///
+    /// *Tightening* the cap (new value ≤ current) is a risk-reducing operation
+    /// and may be performed by any single admin, so that one compromised or
+    /// unavailable admin cannot block an emergency brake.
+    /// *Raising* the cap increases bridge exposure and therefore requires the
+    /// full admin threshold via `approvals`.
+    ///
+    /// # Panics
+    /// - `"max_per_hour must be positive"` if `max_per_hour <= 0`
+    /// - `"not enough admin approvals"` when raising the cap without quorum
+    pub fn set_mint_rate_limit(
+        env: Env,
+        approvals: Vec<Address>,
+        max_per_hour: i128,
+    ) {
         if max_per_hour <= 0 {
             panic!("max_per_hour must be positive");
+        }
+        const MAX_PER_HOUR: i128 = 1_000_000_000_000;
+        let current: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MintRateLimit)
+            .unwrap_or(MAX_PER_HOUR);
+        if max_per_hour > current {
+            Self::require_admin_multisig(&env, &approvals);
+        } else {
+            Self::require_admin(&env);
         }
         env.storage()
             .instance()
             .set(&DataKey::MintRateLimit, &max_per_hour);
     }
 
-    /// Propose a new bridge attester set. Any admin can propose; the change
-    /// takes effect only after `execute_bridge` is called post-timelock.
-    pub fn propose_bridge(env: Env, bridge_keys: Vec<BytesN<32>>, bridge_threshold: u32) {
-        Self::require_admin(&env);
+    /// Propose a new bridge attester set. Requires the admin threshold and
+    /// the change takes effect only after `execute_bridge` is called once the
+    /// timelock has elapsed.
+    pub fn propose_bridge(
+        env: Env,
+        approvals: Vec<Address>,
+        bridge_keys: Vec<BytesN<32>>,
+        bridge_threshold: u32,
+    ) {
+        Self::require_admin_multisig(&env, &approvals);
+        if bridge_keys.is_empty() {
+            panic!("bridge set cannot be empty");
+        }
+        if bridge_threshold < 1 || bridge_threshold > bridge_keys.len() {
+            panic!("invalid bridge threshold");
+        }
         env.storage().instance().set(
             &DataKey::PendingBridge,
             &BridgeSet {
@@ -454,9 +632,9 @@ impl LendingController {
     }
 
     /// Execute a previously proposed bridge update after the timelock expires.
-    /// Any admin may call this once the timelock has passed.
-    pub fn execute_bridge(env: Env) {
-        Self::require_admin(&env);
+    /// Requires the admin threshold.
+    pub fn execute_bridge(env: Env, approvals: Vec<Address>) {
+        Self::require_admin_multisig(&env, &approvals);
         let proposed_at: u64 = env
             .storage()
             .instance()
@@ -476,10 +654,28 @@ impl LendingController {
         env.storage().instance().remove(&DataKey::PendingBridgeAt);
     }
 
-    /// Direct bridge set (backward compat for tests). Production should use
-    /// propose_bridge + execute_bridge with timelock.
-    pub fn set_bridge(env: Env, bridge_keys: Vec<BytesN<32>>, bridge_threshold: u32) {
-        Self::require_admin(&env);
+    /// Immediate bridge set, retained for backward compatibility and
+    /// emergency rotation. Unlike `propose_bridge`, this has no timelock,
+    /// so it requires the full admin threshold (`approvals`). Production
+    /// deployments should prefer `propose_bridge` + `execute_bridge`, which
+    /// additionally gives observers a delay to react.
+    ///
+    /// # Panics
+    /// - `"not enough admin approvals"` if `approvals` is below threshold
+    /// - `"invalid bridge threshold"` if `bridge_threshold` is out of range
+    pub fn set_bridge(
+        env: Env,
+        approvals: Vec<Address>,
+        bridge_keys: Vec<BytesN<32>>,
+        bridge_threshold: u32,
+    ) {
+        Self::require_admin_multisig(&env, &approvals);
+        if bridge_keys.is_empty() {
+            panic!("bridge set cannot be empty");
+        }
+        if bridge_threshold < 1 || bridge_threshold > bridge_keys.len() {
+            panic!("invalid bridge threshold");
+        }
         env.storage().instance().set(
             &DataKey::Bridge,
             &BridgeSet {
@@ -490,9 +686,10 @@ impl LendingController {
     }
 
     /// Add a new admin to the admin set. Requires threshold approvals from
-    /// existing admins.
-    pub fn add_admin(env: Env, new_admin: Address) {
-        Self::require_admin_multisig(&env);
+    /// existing admins (each listed approver must be a distinct current admin
+    /// and must have authorized this invocation).
+    pub fn add_admin(env: Env, approvals: Vec<Address>, new_admin: Address) {
+        Self::require_admin_multisig(&env, &approvals);
         let mut set: AdminSet = env
             .storage()
             .instance()
@@ -510,8 +707,8 @@ impl LendingController {
 
     /// Remove an admin. Requires threshold approvals; cannot reduce below
     /// threshold.
-    pub fn remove_admin(env: Env, admin_to_remove: Address) {
-        Self::require_admin_multisig(&env);
+    pub fn remove_admin(env: Env, approvals: Vec<Address>, admin_to_remove: Address) {
+        Self::require_admin_multisig(&env, &approvals);
         let mut set: AdminSet = env
             .storage()
             .instance()
@@ -539,8 +736,8 @@ impl LendingController {
 
     /// Set the admin threshold. Requires threshold approvals. Threshold must
     /// be ≥ 1 and ≤ admin count.
-    pub fn set_threshold(env: Env, new_threshold: u32) {
-        Self::require_admin_multisig(&env);
+    pub fn set_threshold(env: Env, approvals: Vec<Address>, new_threshold: u32) {
+        Self::require_admin_multisig(&env, &approvals);
         let mut set: AdminSet = env
             .storage()
             .instance()
@@ -571,7 +768,7 @@ impl LendingController {
             .get(&DataKey::AdminSet)
             .expect("admin set not found");
         // Require at least one admin to have authorized (any admin may act
-        // for emergency operations like pause and direct set_bridge).
+        // for emergency operations like pause).
         let mut authed = false;
         for i in 0u32..set.admins.len() {
             let a = set.admins.get(i).unwrap();
@@ -585,9 +782,10 @@ impl LendingController {
             // For multisig operations, caller must be in the set.
             if !authed {
                 // require_auth on the first admin — if it passes, we're good.
-                // This means set_paused and set_bridge require the FIRST admin.
-                // For true multisig, use add_admin/remove_admin which gate on
-                // require_admin_multisig.
+                // This means `set_paused` requires the FIRST admin, which is
+                // an operational limitation: any admin can *halt* the protocol
+                // only if they are admins[0]. Sensitive configuration changes
+                // use `require_admin_multisig` (true N-of-M) instead.
                 a.require_auth();
                 authed = true;
             }
@@ -595,27 +793,55 @@ impl LendingController {
         let _ = authed;
     }
 
-    /// Multisig check — requires at least one admin to have signed.
+    /// True N-of-M admin threshold enforcement.
     ///
-    /// TODO(prod): Soroban's `require_auth()` panics if the address didn't
-    /// sign, so iterating all admins would require 100% quorum. True N-of-M
-    /// multisig needs `env.crypto().ed25519_verify()` against the admin set
-    /// with explicit signatures (similar to the bridge attestation pattern).
-    /// For now, any single admin can authorize multisig-gated operations;
-    /// the admin SET itself is a foundation for future threshold enforcement.
-    fn require_admin_multisig(env: &Env) {
+    /// `approvals` lists the admins authorizing this operation. The call
+    /// succeeds only if:
+    ///   1. at least `AdminSet.threshold` approvals are supplied,
+    ///   2. every approver is a current member of the admin set,
+    ///   3. no approver is listed twice, and
+    ///   4. every approver has actually authorized this invocation
+    ///      (`require_auth` panics otherwise, so a caller cannot forge
+    ///      approvals for admins that did not sign).
+    ///
+    /// This is real threshold authorization: partial approval is rejected and
+    /// non-admins cannot satisfy the quorum.
+    fn require_admin_multisig(env: &Env, approvals: &Vec<Address>) {
         let set: AdminSet = env
             .storage()
             .instance()
             .get(&DataKey::AdminSet)
             .expect("admin set not found");
-        // Require the first admin to authorize — this is a single-admin
-        // gate until true multi-sig signature verification is implemented.
-        // The admin set structure (Vec + threshold) is stored, so when the
-        // SDK adds `try_require_auth` or we implement explicit sig checking,
-        // this function can be upgraded to true threshold enforcement.
-        let first = set.admins.get(0).expect("admin set is empty");
-        first.require_auth();
+
+        if approvals.len() < set.threshold {
+            panic!("not enough admin approvals");
+        }
+
+        for i in 0u32..approvals.len() {
+            let approver = approvals.get(i).expect("bad approval index");
+
+            // (2) Membership check.
+            let mut is_admin = false;
+            for j in 0u32..set.admins.len() {
+                if set.admins.get(j).unwrap() == approver {
+                    is_admin = true;
+                }
+            }
+            if !is_admin {
+                panic!("approver is not an admin");
+            }
+
+            // (3) Duplicate check — prevents padding the quorum with the same
+            // signer listed multiple times.
+            for j in 0u32..i {
+                if approvals.get(j).unwrap() == approver {
+                    panic!("duplicate admin approval");
+                }
+            }
+
+            // (4) Proof the approver authorized this invocation.
+            approver.require_auth();
+        }
     }
 
     fn require_not_paused(env: &Env) {
@@ -827,6 +1053,28 @@ impl LendingController {
         let args: Vec<Val> = soroban_sdk::vec![env, asset.into_val(env), amount.into_val(env),];
         env.invoke_contract(oracle_addr, &fn_name, args)
     }
+
+    /// Sum the USD value (oracle `value_of`) of every outstanding debt the
+    /// user holds across all assets configured in the pool. Assets the user
+    /// does not owe contribute zero.
+    fn total_debt_value(env: &Env, pool: &Address, oracle_addr: &Address, user: &Address) -> i128 {
+        let fn_assets = Symbol::new(env, "assets");
+        let no_args: Vec<Val> = Vec::new(env);
+        let assets: Vec<Symbol> = env.invoke_contract(pool, &fn_assets, no_args);
+        let mut total: i128 = 0;
+        for asset in assets.iter() {
+            let fn_debt = Symbol::new(env, "debt_of");
+            let debt_args: Vec<Val> =
+                soroban_sdk::vec![env, user.into_val(env), asset.into_val(env),];
+            let debt: i128 = env.invoke_contract(pool, &fn_debt, debt_args);
+            if debt > 0 {
+                total = total
+                    .checked_add(Self::oracle_value_of(env, oracle_addr, &asset, &debt))
+                    .expect("overflow");
+            }
+        }
+        total
+    }
 }
 
 #[cfg(test)]
@@ -1011,6 +1259,7 @@ mod tests {
         let TestEnv { env, ctrl, .. } = setup();
         let signer = ed25519_dalek::SigningKey::from_bytes(&[3u8; 32]);
         ctrl.set_bridge(
+            &ctrl.admin_set().admins,
             &soroban_sdk::vec![
                 &env,
                 BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
@@ -1018,7 +1267,7 @@ mod tests {
             &1u32,
         );
         // Tighten the circuit breaker so the test can trip it.
-        ctrl.set_mint_rate_limit(&3i128);
+        ctrl.set_mint_rate_limit(&ctrl.admin_set().admins, &3i128);
 
         let chain_id = 1u32;
         let src = BytesN::from_array(&env, &[4u8; 32]);
@@ -1178,6 +1427,7 @@ mod tests {
         let signer = ed25519_dalek::SigningKey::from_bytes(&[2u8; 32]);
         // Update bridge pubkey to match the signer (single key, threshold 1).
         ctrl.set_bridge(
+            &ctrl.admin_set().admins,
             &soroban_sdk::vec![
                 &env,
                 BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
@@ -1215,6 +1465,7 @@ mod tests {
         let TestEnv { env, ctrl, .. } = setup();
         let signer = ed25519_dalek::SigningKey::from_bytes(&[2u8; 32]);
         ctrl.set_bridge(
+            &ctrl.admin_set().admins,
             &soroban_sdk::vec![
                 &env,
                 BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
@@ -1247,6 +1498,7 @@ mod tests {
         } = setup();
         let signer = ed25519_dalek::SigningKey::from_bytes(&[6u8; 32]);
         ctrl.set_bridge(
+            &ctrl.admin_set().admins,
             &soroban_sdk::vec![
                 &env,
                 BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
@@ -1286,6 +1538,7 @@ mod tests {
         } = setup();
         let signer = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
         ctrl.set_bridge(
+            &ctrl.admin_set().admins,
             &soroban_sdk::vec![
                 &env,
                 BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
@@ -1978,5 +2231,297 @@ mod tests {
         // Duplicate index 0,0.
         let atts = soroban_sdk::vec![&env, (0u32, sig.clone()), (0u32, sig)];
         ctrl.wrap(&atts, &1u32, &src, &1_000i128, &to, &salt, &0u64);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONTROLLER REPAY / WITHDRAW COLLATERAL (MISSING-USER-ENTRYPOINTS)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Configure `asset` in the pool with a given LTV and register the
+    /// controller as a pool operator so `borrow_raw` is permitted.
+    fn configure_asset(te: &TestEnv<'_>, asset: &Symbol, ltv_bps: u32) {
+        let pool_client = lending_pool::LendingPoolClient::new(&te.env, &te.pool);
+        pool_client.add_asset(&lending_pool::AssetConfig {
+            asset: asset.clone(),
+            collateral_vault: te.vault.clone(),
+            oracle: te.oracle.clone(),
+            ltoken: Address::generate(&te.env),
+            base_rate_bps: 200,
+            slope1_bps: 1_000,
+            slope2_bps: 13_000,
+            kink_bps: 8_000,
+            reserve_factor_bps: 1_000,
+            ltv_bps,
+        });
+        pool_client.add_operator(&te.ctrl.address);
+    }
+
+    /// R-EP-1: `repay` routes to the pool, reduces the debt, and returns the
+    /// amount actually repaid.
+    #[test]
+    fn test_repay_reduces_debt() {
+        let te = setup();
+        let TestEnv {
+            env,
+            pool,
+            ctrl,
+            ..
+        } = &te;
+        let user = Address::generate(env);
+        let collat_asset = Symbol::new(env, "XLM");
+        let debt_asset = Symbol::new(env, "USDC");
+        configure_asset(&te, &collat_asset, 7_500);
+        configure_asset(&te, &debt_asset, 7_500);
+
+        ctrl.supply_collateral(&user, &collat_asset, &100_000_000i128);
+        ctrl.borrow(
+            &user,
+            &collat_asset,
+            &1i128,
+            &debt_asset,
+            &1_000_000i128,
+        );
+
+        let pool_client = lending_pool::LendingPoolClient::new(env, pool);
+        let debt_before = pool_client.debt_of(&user, &debt_asset);
+        assert_eq!(debt_before, 1_000_000i128);
+
+        let repaid = ctrl.repay(&user, &debt_asset, &400_000i128);
+        assert_eq!(repaid, 400_000i128, "repay must report the amount applied");
+        assert_eq!(
+            pool_client.debt_of(&user, &debt_asset),
+            600_000i128,
+            "debt must decrease by the repaid amount"
+        );
+    }
+
+    /// R-EP-2: over-repayment is capped at the outstanding balance and the
+    /// return value reports the capped amount (no phantom repayment).
+    #[test]
+    fn test_repay_capped_at_outstanding_balance() {
+        let te = setup();
+        let TestEnv {
+            env,
+            pool,
+            ctrl,
+            ..
+        } = &te;
+        let user = Address::generate(env);
+        let collat_asset = Symbol::new(env, "XLM");
+        let debt_asset = Symbol::new(env, "USDC");
+        configure_asset(&te, &collat_asset, 7_500);
+        configure_asset(&te, &debt_asset, 7_500);
+
+        ctrl.supply_collateral(&user, &collat_asset, &100_000_000i128);
+        ctrl.borrow(
+            &user,
+            &collat_asset,
+            &1i128,
+            &debt_asset,
+            &500_000i128,
+        );
+
+        let repaid = ctrl.repay(&user, &debt_asset, &10_000_000i128);
+        assert_eq!(repaid, 500_000i128, "repay must be capped at the debt");
+        let pool_client = lending_pool::LendingPoolClient::new(env, pool);
+        assert_eq!(pool_client.debt_of(&user, &debt_asset), 0i128);
+    }
+
+    /// R-EP-3: zero repayment is rejected.
+    #[test]
+    #[should_panic(expected = "amount must be positive")]
+    fn test_repay_zero_amount_reverts() {
+        let te = setup();
+        let TestEnv { env, ctrl, .. } = &te;
+        let user = Address::generate(env);
+        ctrl.repay(&user, &Symbol::new(env, "USDC"), &0i128);
+    }
+
+    /// R-EP-4: collateral can be withdrawn while the position stays inside
+    /// the LTV limit, and the vault position is reduced.
+    #[test]
+    fn test_withdraw_collateral_succeeds_when_healthy() {
+        let te = setup();
+        let TestEnv {
+            env,
+            vault,
+            ctrl,
+            ..
+        } = &te;
+        let user = Address::generate(env);
+        let collat_asset = Symbol::new(env, "XLM");
+        let debt_asset = Symbol::new(env, "USDC");
+        configure_asset(&te, &collat_asset, 7_500);
+        configure_asset(&te, &debt_asset, 7_500);
+
+        ctrl.supply_collateral(&user, &collat_asset, &100_000_000i128);
+        // $10M collateral, $1M debt → 10% LTV.
+        ctrl.borrow(
+            &user,
+            &collat_asset,
+            &1i128,
+            &debt_asset,
+            &1_000_000i128,
+        );
+
+        // Withdrawing half the collateral leaves $5M value against $1M debt
+        // (20% LTV) — well within the 75% limit.
+        let withdrawn = ctrl.withdraw_collateral(&user, &collat_asset, &50_000_000i128);
+        assert_eq!(withdrawn, 50_000_000i128);
+
+        let vault_client = collateral_vault::CollateralVaultClient::new(env, vault);
+        assert_eq!(
+            vault_client.position(&user, &collat_asset),
+            50_000_001i128,
+            "vault must release exactly the withdrawn amount"
+        );
+    }
+
+    /// R-EP-5: a withdrawal that would breach the LTV limit is rejected and
+    /// leaves the position untouched.
+    #[test]
+    #[should_panic(expected = "health factor too low")]
+    fn test_withdraw_collateral_ltv_breach_reverts() {
+        let te = setup();
+        let TestEnv {
+            env,
+            ctrl,
+            ..
+        } = &te;
+        let user = Address::generate(env);
+        let collat_asset = Symbol::new(env, "XLM");
+        let debt_asset = Symbol::new(env, "USDC");
+        configure_asset(&te, &collat_asset, 7_500);
+        configure_asset(&te, &debt_asset, 7_500);
+
+        // $1M collateral, $0.7M debt → 70% LTV (inside the limit).
+        ctrl.supply_collateral(&user, &collat_asset, &10_000_000i128);
+        ctrl.borrow(
+            &user,
+            &collat_asset,
+            &1i128,
+            &debt_asset,
+            &700_000i128,
+        );
+
+        // Withdrawing 2M XLM leaves $0.8M of value → max debt $0.6M < $0.7M.
+        ctrl.withdraw_collateral(&user, &collat_asset, &2_000_000i128);
+    }
+
+    /// R-EP-6: withdrawing more than the user's position is rejected.
+    #[test]
+    #[should_panic(expected = "insufficient collateral")]
+    fn test_withdraw_collateral_insufficient_reverts() {
+        let te = setup();
+        let TestEnv {
+            env,
+            ctrl,
+            ..
+        } = &te;
+        let user = Address::generate(env);
+        let collat_asset = Symbol::new(env, "XLM");
+        configure_asset(&te, &collat_asset, 7_500);
+
+        ctrl.supply_collateral(&user, &collat_asset, &1_000i128);
+        ctrl.withdraw_collateral(&user, &collat_asset, &1_001i128);
+    }
+
+    /// R-EP-7: withdrawing the whole position with no debt is allowed.
+    #[test]
+    fn test_withdraw_collateral_full_with_no_debt() {
+        let te = setup();
+        let TestEnv {
+            env,
+            vault,
+            ctrl,
+            ..
+        } = &te;
+        let user = Address::generate(env);
+        let collat_asset = Symbol::new(env, "XLM");
+        configure_asset(&te, &collat_asset, 7_500);
+
+        ctrl.supply_collateral(&user, &collat_asset, &5_000i128);
+        let withdrawn = ctrl.withdraw_collateral(&user, &collat_asset, &5_000i128);
+        assert_eq!(withdrawn, 5_000i128);
+
+        let vault_client = collateral_vault::CollateralVaultClient::new(env, vault);
+        assert_eq!(vault_client.position(&user, &collat_asset), 0i128);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADMIN MULTISIG THRESHOLD (ADMIN-NOT-MULTISIG)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// R-MS-1: a single approval cannot satisfy a 2-of-2 threshold.
+    #[test]
+    #[should_panic(expected = "not enough admin approvals")]
+    fn test_multisig_partial_approval_reverts() {
+        let te = setup();
+        let TestEnv {
+            env, admin, ctrl, ..
+        } = &te;
+        let admin2 = Address::generate(env);
+
+        // Bootstrap: 1-of-1 add, then raise the threshold to 2-of-2.
+        ctrl.add_admin(&ctrl.admin_set().admins, &admin2);
+        let both = soroban_sdk::vec![env, admin.clone(), admin2.clone()];
+        ctrl.set_threshold(&both, &2u32);
+        assert_eq!(ctrl.admin_set().threshold, 2u32);
+
+        // Only one of the two admins approves → below threshold.
+        ctrl.add_admin(
+            &soroban_sdk::vec![env, admin.clone()],
+            &Address::generate(env),
+        );
+    }
+
+    /// R-MS-2: a non-admin address cannot contribute to the quorum.
+    #[test]
+    #[should_panic(expected = "approver is not an admin")]
+    fn test_multisig_non_admin_approver_reverts() {
+        let te = setup();
+        let TestEnv { env, ctrl, .. } = &te;
+        let outsider = Address::generate(env);
+        ctrl.add_admin(
+            &soroban_sdk::vec![env, outsider],
+            &Address::generate(env),
+        );
+    }
+
+    /// R-MS-3: the same admin cannot be counted twice toward the quorum.
+    #[test]
+    #[should_panic(expected = "duplicate admin approval")]
+    fn test_multisig_duplicate_approval_reverts() {
+        let te = setup();
+        let TestEnv {
+            env, admin, ctrl, ..
+        } = &te;
+        let admin2 = Address::generate(env);
+        ctrl.add_admin(&ctrl.admin_set().admins, &admin2);
+        let both = soroban_sdk::vec![env, admin.clone(), admin2.clone()];
+        ctrl.set_threshold(&both, &2u32);
+
+        // Threshold is 2, and admin[0] is listed twice — rejects padding.
+        ctrl.add_admin(
+            &soroban_sdk::vec![env, admin.clone(), admin.clone()],
+            &Address::generate(env),
+        );
+    }
+
+    /// R-MS-4: the full threshold succeeds and mutates the admin set.
+    #[test]
+    fn test_multisig_full_threshold_succeeds() {
+        let te = setup();
+        let TestEnv {
+            env, admin, ctrl, ..
+        } = &te;
+        let admin2 = Address::generate(env);
+        ctrl.add_admin(&ctrl.admin_set().admins, &admin2);
+        let both = soroban_sdk::vec![env, admin.clone(), admin2.clone()];
+        ctrl.set_threshold(&both, &2u32);
+
+        let admin3 = Address::generate(env);
+        ctrl.add_admin(&both, &admin3);
+        assert_eq!(ctrl.admin_set().admins.len(), 3u32);
     }
 }

@@ -8,21 +8,25 @@ The core lending protocol contract.
 
 **Entry Points:**
 
-| Function              | Args                  | Returns        | Auth    |
-| --------------------- | --------------------- | -------------- | ------- |
-| `initialize`          | `admin: Address`      | —              | `admin` |
-| `add_asset`           | `cfg: AssetConfig`    | —              | `admin` |
-| `supply`              | `user, asset, amount` | `shares: i128` | `user`  |
-| `withdraw`            | `user, asset, shares` | `amount: i128` | `user`  |
-| `supply_collateral`   | `user, asset, amount` | —              | `user`  |
-| `withdraw_collateral` | `user, asset, amount` | `amount: i128` | `user`  |
-| `borrow`              | `user, asset, amount` | —              | `user`  |
-| `repay`               | `user, asset, amount` | `repaid: i128` | `user`  |
-| `health_factor`       | `user, asset`         | `hf: i128`     | —       |
-| `debt_of`             | `user, asset`         | `debt: i128`   | —       |
-| `collateral_of`       | `user, asset`         | `amount: i128` | —       |
-| `borrow_apy_bps`      | `asset`               | `apy: u32`     | —       |
-| `ltv_bps`             | `asset`               | `ltv: u32`     | —       |
+| Function              | Args                             | Returns        | Auth               |
+| --------------------- | -------------------------------- | -------------- | ------------------ |
+| `initialize`          | `admin: Address`                 | —              | `admin`            |
+| `add_asset`           | `cfg: AssetConfig`               | —              | `admin`            |
+| `supply`              | `user, asset, amount`            | `shares: i128` | `user`             |
+| `withdraw`            | `user, asset, shares`            | `amount: i128` | `user`             |
+| `supply_collateral`   | `user, asset, amount`            | —              | `user`             |
+| `withdraw_collateral` | `user, asset, amount`            | `amount: i128` | `user`             |
+| `borrow`              | `user, asset, amount`            | —              | `user`             |
+| `borrow_raw`          | `operator, user, asset, amount`  | —              | `operator`         |
+| `repay`               | `user, asset, amount`            | `repaid: i128` | `user`             |
+| `repay_on_behalf`     | `payer, borrower, asset, amount` | `repaid: i128` | `payer` (operator) |
+| `add_operator`        | `op: Address`                    | —              | `admin`            |
+| `assets`              | —                                | `Vec<Symbol>`  | —                  |
+| `health_factor`       | `user, asset`                    | `hf: i128`     | —                  |
+| `debt_of`             | `user, asset`                    | `debt: i128`   | —                  |
+| `collateral_of`       | `user, asset`                    | `amount: i128` | —                  |
+| `borrow_apy_bps`      | `asset`                          | `apy: u32`     | —                  |
+| `ltv_bps`             | `asset`                          | `ltv: u32`     | —                  |
 
 **AssetConfig:**
 
@@ -43,7 +47,43 @@ struct AssetConfig {
 
 ### Lending Controller (`contracts/lending/controller`)
 
-Orchestrates cross-contract calls for wrap/unwrap operations.
+Top-level user entry point: routes supply/borrow/repay/withdraw to the pool and
+vault, enforces oracle-priced LTV on borrow **and** withdrawal, and handles
+cross-chain wrap/unwrap with N-of-M attester verification.
+
+**User flows:**
+
+| Function              | Args                                                                   | Returns             | Auth            |
+| --------------------- | ---------------------------------------------------------------------- | ------------------- | --------------- |
+| `supply_collateral`   | `user, asset, amount`                                                  | —                   | `user`          |
+| `borrow`              | `user, collateral_asset, collateral_amount, debt_asset, borrow_amount` | —                   | `user`          |
+| `repay`               | `user, asset, amount`                                                  | `repaid: i128`      | `user`          |
+| `withdraw_collateral` | `user, collateral_asset, amount`                                       | `amount: i128`      | `user`          |
+| `wrap`                | `attestations, chain_id, source_addr, amount, to, salt, nonce`         | —                   | attester quorum |
+| `unwrap`              | `user, amount, chain_id, source_addr`                                  | `nonce: BytesN<32>` | `user`          |
+
+`withdraw_collateral` values the **remaining** collateral of the withdrawn asset
+against the user's **total** debt across every asset returned by
+`lending_pool.assets()`, at `min(asset ltv_bps, 7500)`. Ignoring other
+collateral is deliberately conservative (stricter, never more permissive).
+
+**Admin:**
+
+| Function              | Args                                       | Auth                                |
+| --------------------- | ------------------------------------------ | ----------------------------------- |
+| `set_paused`          | `paused: bool`                             | any single admin (emergency)        |
+| `set_mint_rate_limit` | `approvals, max_per_hour`                  | 1 admin to tighten; quorum to raise |
+| `set_bridge`          | `approvals, bridge_keys, bridge_threshold` | admin quorum (no timelock)          |
+| `propose_bridge`      | `approvals, bridge_keys, bridge_threshold` | admin quorum                        |
+| `execute_bridge`      | `approvals`                                | admin quorum + 24h timelock         |
+| `add_admin`           | `approvals, new_admin`                     | admin quorum                        |
+| `remove_admin`        | `approvals, admin_to_remove`               | admin quorum                        |
+| `set_threshold`       | `approvals, new_threshold`                 | admin quorum                        |
+
+`approvals` is a list of addresses that must be (a) at least `threshold` long,
+(b) all current admins, (c) free of duplicates, and (d) each have authorized the
+invocation — `require_auth()` panics for any listed admin that did not sign, so
+partial approval cannot be forged.
 
 ### Collateral Vault (`contracts/collateral/soroban`)
 

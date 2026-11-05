@@ -34,7 +34,7 @@
 - [x] Unit tests for each Soroban contract function
 - [x] Invariant tests — 42 `invariant_*` tests (18 lending, 6 liquidation, 6
       controller, 4 oracle, 4 collateral vault, 4 wrapped asset) execute and
-      pass on Rust 1.91.0 + soroban-sdk 27.0.4; see `docs/invariants.md` § 4
+      pass on Rust 1.91.0 + soroban-sdk 27.0.6; see `docs/invariants.md` § 4
 - [x] Bridge unit tests (Solidity, attest signing)
 - [x] Fuzz tests for Soroban financial math (LCG-based PRNG, 50-100 iterations)
 - [x] Property-based tests (random op sequences + invariant checks)

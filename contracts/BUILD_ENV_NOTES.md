@@ -1,11 +1,18 @@
 # Build Environment Notes
 
 > **Status (2026-07): RESOLVED.** The Soroban workspace now builds, lints, and
-> tests cleanly on the **stable** Rust toolchain with **soroban-sdk 27.0.4**.
-> All CI commands pass locally: `cargo fmt --all -- --check`,
-> `cargo check --workspace --target wasm32v1-none --release`,
-> `cargo clippy --workspace --all-targets -- -D warnings`, and
-> `cargo test --workspace`.
+> tests cleanly on the **stable** Rust toolchain with **soroban-sdk 27.0.6**
+> (pinned as `soroban-sdk = "=27.0.6"` in `contracts/Cargo.toml`). All CI
+> commands pass: `cargo fmt --all -- --check`,
+> `cargo check --workspace --locked --target wasm32v1-none --release`,
+> `cargo clippy --workspace --all-targets --locked -- -D warnings`, and
+> `cargo test --workspace --locked`.
+>
+> The committed `contracts/Cargo.lock` resolves **both** `ed25519-dalek 2.2.0`
+> and `3.0.0` (and both `rand_core 0.6.4` and `0.10.1`) side by side — the old
+> conflict is resolved by version isolation plus a pinned lockfile, not by
+> forcing a single version. The exact graph is listed in
+> [`docs/verification-status.md`](../docs/verification-status.md).
 
 ## History: what used to be broken
 
@@ -27,7 +34,7 @@ the `edition2024` Cargo feature — unparseable by Rust 1.81.
 
 ## The fix (implemented)
 
-1. **Bump to `soroban-sdk 27.0.4`** (the path-forward "Option A" documented
+1. **Bump to `soroban-sdk 27.x`** (the path-forward "Option A" documented
    below). 27.x bundles a modern `soroban-env-host` with no conflicting
    `ed25519-dalek 1.x` testutils path, resolving the `rand_core` split outright.
    `soroban-token-sdk` / `stellar-asset-sdk` were removed from the workspace

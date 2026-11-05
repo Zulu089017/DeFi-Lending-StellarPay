@@ -12,8 +12,10 @@ finality and ~$0.000005 transaction fees without requiring rollups or
 sidechains. This makes it ideal for high-frequency DeFi operations like lending
 and liquidation.
 
-**Is StellarPay audited?** Not yet. A formal audit is planned for Q4 2026. Until
-then, the protocol is in testnet-only mode. See [SECURITY.md](../SECURITY.md).
+**Is StellarPay audited?** Not yet. A formal audit is targeted for **Q1 2027**
+(Trail of Bits primary, Halborn backup); no engagement has been signed. Until
+then, the protocol is in testnet-only mode. See [SECURITY.md](../SECURITY.md)
+and [`docs/verification-status.md`](verification-status.md).
 
 ## Using the Protocol
 
@@ -29,7 +31,8 @@ then, the protocol is in testnet-only mode. See [SECURITY.md](../SECURITY.md).
 **What assets are supported?**
 
 - **Native**: XLM
-- **Wrapped**: wETH, wUSDC, wSOL, wMATIC
+- **Wrapped**: wETH, wUSDC (deployed on testnet — see
+  [`DEPLOYMENTS.md`](../DEPLOYMENTS.md))
 - More assets can be added through governance proposals
 
 **What are the fees?**
@@ -64,7 +67,9 @@ Soroban.
 Solana (coming Q4 2026).
 
 **Can I run my own bridge/indexer?** Yes! The entire stack is open source and
-designed as independent services. See [Deployment Guide](deployment.md).
+designed as independent services. See the [Deployment Guide](deployment.md) and
+the [Developer Guide](developer-guide.md). There is no hosted dashboard or API
+today — run the stack locally.
 
 ## Security
 
@@ -76,6 +81,9 @@ cross-chain operation. Compromising one attester is insufficient.
 state-changing operations (supply, borrow, withdraw, repay) in case of
 emergency. View functions remain accessible.
 
-**How do I report a security vulnerability?** Email security@spg.xyz. Do not
-open a public issue. See [SECURITY.md](../SECURITY.md) for our disclosure
-policy.
+**How do I report a security vulnerability?** Do not open a public issue. Use
+GitHub's private vulnerability reporting
+(<https://github.com/Zulu089017/DeFi-Lending-StellarPay/security/advisories/new>).
+`security@spg.xyz` is listed as a fallback, but `spg.xyz` is not a domain this
+project controls, so prefer the GitHub channel. See
+[SECURITY.md](../SECURITY.md) for the disclosure policy.

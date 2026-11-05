@@ -46,6 +46,8 @@ pub enum DataKey {
     /// asset => total deposit shares (separate from total_deposit to avoid
     /// the first-depositor share-inflation attack)
     TotalDepositShares(Symbol),
+    /// ordered list of configured assets (for cross-asset risk aggregation)
+    Assets,
 }
 
 #[contracttype]
@@ -106,6 +108,25 @@ impl LendingPool {
 
     pub fn add_asset(env: Env, cfg: AssetConfig) {
         Self::require_admin(&env);
+        // Track the configured asset list so callers (e.g. the lending
+        // controller) can aggregate risk across every asset a user might
+        // owe. Re-adding an asset updates its config without duplicating
+        // the list entry.
+        let mut assets: soroban_sdk::Vec<Symbol> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Assets)
+            .unwrap_or(soroban_sdk::Vec::new(&env));
+        let mut known = false;
+        for i in 0u32..assets.len() {
+            if assets.get(i).unwrap() == cfg.asset {
+                known = true;
+            }
+        }
+        if !known {
+            assets.push_back(cfg.asset.clone());
+            env.storage().persistent().set(&DataKey::Assets, &assets);
+        }
         env.storage()
             .persistent()
             .set(&DataKey::AssetConfig(cfg.asset.clone()), &cfg);
@@ -381,6 +402,17 @@ impl LendingPool {
             .checked_mul(1_000_000_000_000_000_000i128)
             .expect("overflow")
             / debt
+    }
+
+    /// Returns every asset configured via `add_asset`, in configuration
+    /// order. Used by the controller to value a user's debt across all
+    /// assets (multi-asset risk aggregation) rather than assuming a single
+    /// debt asset.
+    pub fn assets(env: Env) -> soroban_sdk::Vec<Symbol> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Assets)
+            .unwrap_or(soroban_sdk::Vec::new(&env))
     }
 
     /// Returns the configured max LTV (basis points) for `asset` when used

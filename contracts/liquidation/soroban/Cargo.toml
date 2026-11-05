@@ -16,3 +16,4 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 lending_pool = { path = "../../lending/soroban" }
 collateral_vault = { path = "../../collateral/soroban" }
 wrapped_asset = { path = "../../treasury/soroban" }
+oracle = { path = "../../oracle/soroban" }

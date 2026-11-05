@@ -4,8 +4,9 @@ import { logger } from "./utils/logger.js";
 import { EthereumWatcher } from "./chains/ethereum.js";
 import { PolygonWatcher } from "./chains/polygon.js";
 import { SolanaWatcher } from "./chains/solana.js";
-import { StellarWatcher } from "./chains/stellar.js";
+import { StellarUnwrapWatcher } from "./chains/stellar.js";
 import { StellarMinter } from "./mint/stellarMinter.js";
+import { EvmReleaser, buildReleaseContexts } from "./release/evmRelease.js";
 import { stellarPayment } from "./stellarPayment.js";
 import { prisma } from "./store/db.js";
 import {
@@ -49,8 +50,15 @@ async function main() {
   const eth = new EthereumWatcher();
   const poly = new PolygonWatcher();
   const sol = new SolanaWatcher();
-  const stellarW = new StellarWatcher();
+  const stellarW = new StellarUnwrapWatcher();
   const minter = new StellarMinter();
+  const releaser = new EvmReleaser(buildReleaseContexts());
+  if (!releaser.isEnabled()) {
+    logger.warn(
+      "EVM release path disabled — set ETHEREUM_/POLYGON_RELEASE_TOKEN, " +
+        "ETHEREUM_/POLYGON_RELAYER_PK and EVM_ATTESTER_KEYS to enable unwrap → Bridge.release",
+    );
+  }
 
   await Promise.all([eth.start(), poly.start(), sol.start(), stellarW.start()]);
 
@@ -69,10 +77,14 @@ async function main() {
       }
       await stellarW.pollOnce();
       const res = await minter.processPending();
+      const rel = await releaser.processPending();
       bridgeEventLagSeconds.set((Date.now() - lastEventAt) / 1000);
       bridgePendingMints.set(res.pending);
       if (res.minted > 0 || res.failed > 0) {
         logger.info(res, "mint cycle complete");
+      }
+      if (rel.released > 0 || rel.failed > 0) {
+        logger.info(rel, "release cycle complete");
       }
     } catch (err) {
       logger.error({ err }, "tick failed");

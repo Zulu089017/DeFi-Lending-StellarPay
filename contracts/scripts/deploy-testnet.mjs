@@ -515,7 +515,9 @@ function writeArtifacts(admin, attA, attB, attC, ids) {
       ethereum: { bridge: "0x0000000000000000000000000000000000000000" },
       polygon: { bridge: "0x0000000000000000000000000000000000000000" },
     },
-    api: "https://api.spg.xyz",
+    // No hosted API is deployed yet (api.spg.xyz has no DNS record), so the
+    // default points at a local API. Update when one is live.
+    api: "http://localhost:4000",
   };
   writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n");
   console.log(`✔ wrote ${MANIFEST_PATH}`);
@@ -542,11 +544,15 @@ ACCOUNTS = [
 [DOCUMENTATION]
 ORG_NAME = "StellarPay"
 ORG_DBA = "StellarPay"
-ORG_URL = "https://spg.xyz"
+# NOTE: the previous value (https://spg.xyz) pointed at a domain this project
+# does not control (it currently resolves to an unrelated third-party site),
+# so ORG_URL points at the canonical repository instead. Update both when a
+# project-controlled domain is live.
+ORG_URL = "https://github.com/Zulu089017/DeFi-Lending-StellarPay"
 ORG_DESCRIPTION = "Cross-chain lending protocol settled on Stellar with automated liquidation."
 ORG_OFFICIAL_EMAIL = "hello@spg.xyz"
 ORG_TWITTER = "spg_xyz"
-ORG_GITHUB = "https://github.com/Zulu089017/DeFi-Lending-Platform"
+ORG_GITHUB = "https://github.com/Zulu089017/DeFi-Lending-StellarPay"
 
 # StellarPay does not run a Stellar validator; bridge attester keys are listed
 # under ACCOUNTS above. (SEP-1 [[PRINCIPALS]] is reserved for personal info and

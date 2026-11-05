@@ -28,15 +28,40 @@ export interface StellarMintRequest {
   salt: string;
 }
 
+/** A decoded `unwrap` contract event from the lending_controller.
+ *
+ *  On-chain shape (contracts/lending/controller/src/lib.rs):
+ *    Unwrap { user: Address, amount: i128, chain_id: u32,
+ *             source_addr: BytesN<32>, nonce: BytesN<32> }
+ *
+ *  `user` is the Stellar account whose wrapped tokens were burned;
+ *  `source_addr` is the destination on the source chain (a 32-byte,
+ *  left-zero-padded EVM address for EVM chains). */
 export interface UnwrapEvent {
-  chain: ChainId;
+  chain: "stellar";
   txHash: string;
+  ledger: bigint;
   user: string;
   amount: bigint;
-  sourceChain: ChainId;
-  sourceAddr: string;
-  nonce: string;
+  chainId: number;
+  sourceChain: SourceChainId;
+  sourceAddr: string; // 0x + 32 bytes hex
+  nonce: string; // 0x + 32 bytes hex
 }
+
+/** A persisted unwrap awaiting (or past) its EVM release. */
+export interface PendingRelease {
+  id: string;
+  txHash: string;
+  chainId: number;
+  sourceChain: SourceChainId;
+  recipient: string;
+  amount: bigint;
+  nonce: string;
+  attempts: number;
+}
+
+export type UnwrapStatus = "pending" | "released" | "failed";
 
 export interface BridgeStatus {
   service: "bridge";

@@ -6,24 +6,28 @@ VERSION = "2.0.0"
 NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
 
 # Signing key used for SEP-10/SEP-45 authentication (protocol admin).
-SIGNING_KEY = "GA6ZXOF7TP3VSUHTZEKBEWW5HYIQRJJ25TJ45YRVAQXLZEEVFY6PJEZY"
+SIGNING_KEY = "GC3IFSRJGLDW3LRFLTK7XA7QYZDSGTP35BD6J3PTSE3FU5BVKWA7OUPY"
 
 # Accounts controlled by the StellarPay domain (admin + bridge attesters).
 ACCOUNTS = [
-  "GA6ZXOF7TP3VSUHTZEKBEWW5HYIQRJJ25TJ45YRVAQXLZEEVFY6PJEZY",
-  "GDYEJQJQDCIWZGMVPXCSXUVW3TGUH2JERXWORBRXKLDF4ZUIAQCE5DXO",
-  "GBLZVFSHNMAJW5IJLLEKSCVJVJBVUEGZ5DXUARG4CPDOKHQ7B3EFYG4W",
-  "GCPQMX62ANCNTO3VEOSGVRCQLXNWABMG6XDTDZICNBSLUSEWMUZD46PE",
+  "GC3IFSRJGLDW3LRFLTK7XA7QYZDSGTP35BD6J3PTSE3FU5BVKWA7OUPY",
+  "GBD554K4BVW67FOLY336YGA2LXTVQV3I7XHTKO3YI2BTT6Z2FA76B4LQ",
+  "GA7X4YN3PWRTGQ73C22RBOWWW4M3PKRUOILOUJHW7KGMWYYH4NF22YNU",
+  "GD6BXIKDIUKRBGNRTNSREMA7V5KBNRGJRPBLZCC4235VUZDGX5GOSPUS",
 ]
 
 [DOCUMENTATION]
 ORG_NAME = "StellarPay"
 ORG_DBA = "StellarPay"
-ORG_URL = "https://spg.xyz"
+# NOTE: the previous value (https://spg.xyz) pointed at a domain this project
+# does not control (it currently resolves to an unrelated third-party site),
+# so ORG_URL points at the canonical repository instead. Update both when a
+# project-controlled domain is live.
+ORG_URL = "https://github.com/Zulu089017/DeFi-Lending-StellarPay"
 ORG_DESCRIPTION = "Cross-chain lending protocol settled on Stellar with automated liquidation."
 ORG_OFFICIAL_EMAIL = "hello@spg.xyz"
 ORG_TWITTER = "spg_xyz"
-ORG_GITHUB = "https://github.com/Zulu089017/DeFi-Lending-Platform"
+ORG_GITHUB = "https://github.com/Zulu089017/DeFi-Lending-StellarPay"
 
 # StellarPay does not run a Stellar validator; bridge attester keys are listed
 # under ACCOUNTS above. (SEP-1 [[PRINCIPALS]] is reserved for personal info and
@@ -31,7 +35,7 @@ ORG_GITHUB = "https://github.com/Zulu089017/DeFi-Lending-Platform"
 
 [[CURRENCIES]]
 code = "wETH"
-contract = "CAII636MSZW643AQVYNVATNDQSSEXWDWNYKZA2J7CFYHKTCQ7IDPIGWL"
+contract = "CBEU47GCJ2IK3RBR2Y7Z5XVYXFIEFAKPWIO5B4IQEIZOICYM4BW6MJYC"
 status = "test"
 display_decimals = 4
 name = "Wrapped Ether (StellarPay)"
@@ -39,7 +43,7 @@ desc = "Wrapped ETH bridged from Ethereum mainnet via the StellarPay bridge."
 
 [[CURRENCIES]]
 code = "wUSDC"
-contract = "CCVDMRJYATZE6Y4C74PA4UZREV3TWASUL34XKYJ2RJB226ZZOJYAK67M"
+contract = "CA6IYLXTUJ57X2EAZYMYN6D4EM6TE62MA72NSBHVDFVWSVWQULPO2NSO"
 status = "test"
 display_decimals = 6
 name = "Wrapped USDC (StellarPay)"

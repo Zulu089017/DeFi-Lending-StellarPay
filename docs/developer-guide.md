@@ -1,125 +1,149 @@
 # Developer Guide
 
+> Day-to-day workflow for StellarPay. For the contribution process (labels, PR
+> expectations, review), see
+> [`.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md). For the status of
+> every check, see [`docs/verification-status.md`](verification-status.md).
+
 ## Prerequisites
 
-- Node.js ≥ 22.5
-- pnpm ≥ 10
-- Rust ≥ 1.91 with `wasm32v1-none` target
-- Docker ≥ 24
-- Hardhat (for EVM contracts)
+| Tool    | Version                  | Notes                                     |
+| ------- | ------------------------ | ----------------------------------------- |
+| Node.js | ≥ 22.5                   | CI pins 22                                |
+| pnpm    | 10.0.0                   | `corepack prepare pnpm@10.0.0 --activate` |
+| Rust    | 1.91.0 + `wasm32v1-none` | Soroban SDK 27 MSRV                       |
+| Docker  | ≥ 24                     | optional (Postgres / Redis)               |
+| npm     | bundled with Node        | used **only** in `contracts/`             |
 
-## Repository Structure
+## Repository structure
 
 ```
-apps/           # User-facing applications
-  web/          # Next.js dashboard
-  api/          # Fastify REST + WebSocket API
-  dashboard/    # Standalone analytics dashboard
-contracts/      # Smart contracts
-  lending/      # Lending pool + controller
-  collateral/   # Collateral vault
-  oracle/       # Price oracle
-  liquidation/  # Liquidation engine
-  treasury/     # Wrapped assets
-  governance/   # Governance
-  rewards/      # Rewards distribution
-packages/       # Shared libraries
-  sdk/          # TypeScript SDK
-  utils/        # Shared utilities
-services/       # Backend services
-  payment/      # Bridge middleware
-  cron/         # Transaction relayer
-  indexer/      # Event indexer
+apps/
+  web/          # Next.js dashboard — npm name: @stellar-payment-gateway/dashboard
+  api/          # Fastify REST + WebSocket API — @stellar-payment-gateway/api
+  dashboard/    # Standalone analytics app — @stellar-payment-gateway/dashboard-app
+  docs/  explorer/  treasury/
+contracts/      # Soroban workspace (Rust) + EVM (Hardhat, npm project)
+  lending/soroban  lending/controller  lending/evm
+  collateral/soroban  oracle/soroban  liquidation/soroban
+  treasury/soroban  governance/soroban  rewards/soroban
+  integration-tests/   # cross-contract + property-based tests
+packages/       # sdk, ui, config, types, utils, eslint-config, tsconfig
+services/
+  payment/      # Bridge middleware — @stellar-payment-gateway/bridge
+  cron/         # Relayer — @stellar-payment-gateway/relayer
+  indexer/      # Event indexer — @stellar-payment-gateway/indexer
   notification/ # WebSocket notifications
   analytics/    # TVL analytics
-infra/          # Infrastructure
-  docker/       # Docker Compose
-  kubernetes/   # K8s manifests
-  terraform/    # IaC
-scripts/        # Build/deploy scripts
-docs/           # Documentation
+infra/          # docker, kubernetes, terraform
+scripts/        # dev / build / deploy helpers
+docs/           # documentation
 ```
 
-## Local Development
+> The npm scope is still `@stellar-payment-gateway/*` (inherited from the
+> original skeleton). Use the **npm name** when filtering pnpm commands
+> (`--filter @stellar-payment-gateway/dashboard` refers to `apps/web`).
 
-### 1. Install Dependencies
+## Local development
+
+### 1. Install dependencies
 
 ```bash
-pnpm install
+corepack enable && corepack prepare pnpm@10.0.0 --activate
+pnpm install --frozen-lockfile
 ```
 
-### 2. Start Infrastructure
+### 2. Start infrastructure
 
 ```bash
 docker compose -f infra/docker/docker-compose.dev.yml up -d
+# Postgres 16 on :5432, Redis 7 on :6379
 ```
 
-### 3. Configure Environment
+### 3. Configure the environment
 
 ```bash
-cp apps/api/.env.example apps/api/.env
-cp services/payment/.env.example services/payment/.env
-# Edit .env files with your RPC URLs
+cp apps/api/.env.example          apps/api/.env
+cp apps/web/.env.example          apps/web/.env
+cp services/payment/.env.example  services/payment/.env
+cp services/indexer/.env.example  services/indexer/.env
+cp services/cron/.env.example     services/cron/.env
 ```
 
-### 4. Build Contracts
+Contract ids come from `packages/sdk/src/manifest.json`; the `.env.example`
+files carry the values from the last deployment.
+
+### 4. Build the contracts
 
 ```bash
 cd contracts
-cargo test --workspace
-npx hardhat compile
+cargo build --workspace --locked --target wasm32v1-none --release   # Soroban WASM
+npm ci && npx hardhat compile                                        # EVM
 ```
 
-### 5. Run Services
+### 5. Generate Prisma clients and push the schema
 
 ```bash
-# All services in dev mode
-pnpm dev
+pnpm --filter @stellar-payment-gateway/bridge  exec prisma generate
+pnpm --filter @stellar-payment-gateway/relayer exec prisma generate
+pnpm --filter @stellar-payment-gateway/indexer exec prisma generate
+pnpm --filter @stellar-payment-gateway/api     exec prisma generate
+pnpm --filter @stellar-payment-gateway/api     exec prisma db push
+```
 
-# Or individually
-cd services/payment && pnpm dev
-cd apps/api && pnpm dev
-cd apps/web && pnpm dev
+### 6. Run the services
+
+```bash
+pnpm dev            # everything at once (Turborepo)
+
+# or individually
+pnpm --filter @stellar-payment-gateway/bridge    dev   # services/payment :4100
+pnpm --filter @stellar-payment-gateway/indexer   dev   # services/indexer :4200
+pnpm --filter @stellar-payment-gateway/relayer   dev   # services/cron
+pnpm --filter @stellar-payment-gateway/api       dev   # apps/api         :4000
+pnpm --filter @stellar-payment-gateway/dashboard dev   # apps/web         :3000
 ```
 
 ## Testing
 
 ```bash
-# Run all tests
-pnpm test
+pnpm test                                          # whole workspace (turbo)
+pnpm --filter @stellar-payment-gateway/sdk test   # single package
 
-# Contract tests
-cd contracts && cargo test --workspace
+# Soroban
+cd contracts && cargo test --workspace --locked
 
-# EVM tests
-cd contracts && npx hardhat test
-
-# Specific package
-pnpm --filter @stellar-payment-gateway/sdk test
+# EVM
+cd contracts && npm ci && npx hardhat test
 ```
 
-## Type Checking
+Test locations are listed in
+[`.github/CONTRIBUTING.md` → Where the tests live](../.github/CONTRIBUTING.md#2-run-one-test-the-60-second-sanity-check).
+
+## Type checking and linting
 
 ```bash
-pnpm typecheck
+pnpm typecheck     # tsc --noEmit across the workspace (turbo)
+pnpm lint          # eslint for the packages that define a lint script
+pnpm format:check  # prettier --check over json/md/yml/yaml
 ```
 
-## Linting
+CI runs the same commands — see
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 
-```bash
-pnpm lint
-pnpm format:check
-```
-
-## Building for Production
+## Building for production
 
 ```bash
 pnpm build
 ```
 
-## Git Workflow
+The dashboard build needs `NEXT_PUBLIC_API_URL` and
+`NEXT_PUBLIC_STELLAR_CONTROLLER` (see `apps/web/.env.example`).
 
-We use [Conventional Commits](https://www.conventionalcommits.org/):
+## Git workflow
+
+[Conventional Commits](https://www.conventionalcommits.org/), enforced by
+commitlint:
 
 ```
 feat(scope): description
@@ -131,41 +155,44 @@ security: description
 perf(scope): description
 ```
 
-### Pre-commit Hooks
+### Hooks
 
-- Husky runs lint-staged on staged files
-- Prettier formats code automatically
-- Commitlint validates commit messages
+- **pre-commit** — Husky runs `lint-staged` (Prettier + ESLint) and commitlint
+  on staged files.
+- **pre-push** — per-service type check and test scripts.
 
-### Pre-push Hooks
+## Adding a new package
 
-- TypeScript type checking per service
-- Test suites per service
+1. Create `packages/my-package/` with a `package.json` whose name is
+   `@stellar-payment-gateway/my-package`.
+2. Add a `tsconfig.json` extending
+   `@stellar-payment-gateway/tsconfig/base.json`.
+3. Add the directory to `pnpm-workspace.yaml`.
+4. Run `pnpm install` and commit the updated `pnpm-lock.yaml`.
 
-## Adding a New Package
+## Adding a new contract
 
-1. Create directory: `packages/my-package/`
-2. Add `package.json` with `"name": "@stellar-payment-gateway/my-package"`
-3. Add `tsconfig.json` extending `@stellar-payment-gateway/tsconfig`
-4. Add to `pnpm-workspace.yaml`
-5. Run `pnpm install`
+1. Create `contracts/my-contract/soroban/` with a `Cargo.toml` that uses the
+   workspace `soroban-sdk` version (`=27.0.6`).
+2. Add the member to `contracts/Cargo.toml`.
+3. Add unit tests in the contract module and, if it interacts with other
+   contracts, an integration test under `contracts/integration-tests/`.
+4. Run `cargo fmt`,
+   `cargo clippy --workspace --all-targets --locked -- -D warnings` and
+   `cargo test --workspace --locked`.
+5. Update `docs/invariants.md` if the contract introduces or changes an
+   invariant.
 
-## Adding a New Contract
+## API development
 
-1. Create directory: `contracts/my-contract/soroban/`
-2. Add `Cargo.toml` with workspace deps
-3. Add to workspace members in `contracts/Cargo.toml`
-4. Run `cargo test` to verify
-
-## API Development
-
-The API uses Fastify with the following conventions:
-
-- Routes in `apps/api/src/routes/`
-- Middleware in `apps/api/src/middleware/`
-- Tests in `apps/api/src/tests/`
-- Prisma schema in `apps/api/prisma/schema.prisma`
+- Routes: `apps/api/src/routes/`
+- Middleware: `apps/api/src/middleware/`
+- Tests: `apps/api/src/tests/`
+- Prisma schema: `apps/api/prisma/schema.prisma`
+- Validate input with `zod` at the boundary; return structured errors.
 
 ## Deployment
 
-See [Deployment Guide](deployment.md) for production deployment instructions.
+See [`docs/deployment.md`](deployment.md) for the deployment runbook and
+[`DEPLOYMENTS.md`](../DEPLOYMENTS.md) for the current addresses and their
+verification status.

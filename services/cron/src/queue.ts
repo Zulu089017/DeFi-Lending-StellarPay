@@ -1,7 +1,6 @@
 import { PrismaClient } from "@prisma/client";
-import { z } from "zod";
 import { ethers } from "ethers";
-import { Horizon, Keypair, TransactionBuilder, Operation, Networks } from "@stellar/stellar-sdk";
+import { Horizon, Transaction } from "@stellar/stellar-sdk";
 import { config } from "./config.js";
 import { logger } from "./utils/logger.js";
 import {
@@ -23,16 +22,9 @@ export type RelayerJob = {
   status: "pending" | "submitted" | "failed";
 };
 
-const EVM_BRIDGE_ABI = [
-  "function release(address token, address recipient, uint256 amount, bytes32 stellarTxHash, uint256 nonce, bytes[] calldata signatures) external",
-];
-
 export class Relayer {
-  private stellarKeypair = Keypair.fromSecret(config.STELLAR_RELAYER_SECRET);
   private ethProvider = new ethers.JsonRpcProvider(config.ETHEREUM_RPC);
   private polyProvider = new ethers.JsonRpcProvider(config.POLYGON_RPC);
-  private ethWallet = new ethers.Wallet(config.ETHEREUM_RELAYER_PK, this.ethProvider);
-  private polyWallet = new ethers.Wallet(config.POLYGON_RELAYER_PK, this.polyProvider);
 
   async processOnce() {
     const jobs = await prisma.relayerJob.findMany({
@@ -47,9 +39,9 @@ export class Relayer {
         if (job.chain === "stellar") {
           await this.submitStellar(job);
         } else if (job.chain === "ethereum") {
-          await this.submitEvm(job, this.ethWallet, "ethereum");
+          await this.submitEvm(job, "ethereum", this.ethProvider);
         } else if (job.chain === "polygon") {
-          await this.submitEvm(job, this.polyWallet, "polygon");
+          await this.submitEvm(job, "polygon", this.polyProvider);
         }
       } catch (err) {
         relayerFailuresTotal.inc({ chain: job.chain });
@@ -66,13 +58,10 @@ export class Relayer {
     }
   }
 
-  private async submitStellar(job: any) {
+  private async submitStellar(job: { id: string; signedTxXdr?: string | null }) {
+    if (!job.signedTxXdr) throw new Error(`Stellar job ${job.id} missing signedTxXdr`);
     const server = new Horizon.Server(config.STELLAR_RPC);
-    const envelope = job.signedTxXdr;
-    const tx = new (await import("@stellar/stellar-sdk")).Transaction(
-      envelope,
-      config.STELLAR_NETWORK_PASSPHRASE,
-    );
+    const tx = new Transaction(job.signedTxXdr, config.STELLAR_NETWORK_PASSPHRASE);
     const result = await server.submitTransaction(tx);
     relayerSubmissionsTotal.inc({ chain: "stellar" });
     await prisma.relayerJob.update({
@@ -82,16 +71,35 @@ export class Relayer {
     logger.info({ hash: result.hash, jobId: job.id }, "stellar tx submitted");
   }
 
-  private async submitEvm(job: any, wallet: ethers.Wallet, chain: "ethereum" | "polygon") {
-    const raw = job.rawTx as string;
+  /**
+   * Broadcast a pre-signed EVM transaction.
+   *
+   * `rawTx` is the hex-encoded **signed RLP envelope**, not calldata. The
+   * previous implementation passed it to `wallet.sendTransaction({ data })`,
+   * which produced an unrelated contract-creation transaction with no `to`
+   * and no signature — the release never happened. Broadcasting the envelope
+   * with the provider is the correct (and only) way to submit it.
+   */
+  private async submitEvm(
+    job: { id: string; rawTx?: string | null },
+    chain: "ethereum" | "polygon",
+    provider: ethers.Provider,
+  ) {
+    const raw = job.rawTx;
     if (!raw) throw new Error(`EVM job ${job.id} missing rawTx`);
-    const tx = await wallet.sendTransaction({ data: raw });
+    if (!/^0x[0-9a-fA-F]+$/.test(raw) || raw.length < 10) {
+      throw new Error(`EVM job ${job.id} rawTx is not a hex-encoded signed transaction`);
+    }
+    const tx = await provider.broadcastTransaction(raw);
     const receipt = await tx.wait();
+    if (!receipt || receipt.status !== 1) {
+      throw new Error(`EVM tx ${tx.hash} did not confirm successfully`);
+    }
     relayerSubmissionsTotal.inc({ chain });
     await prisma.relayerJob.update({
       where: { id: job.id },
-      data: { status: "submitted", submittedHash: tx.hash, submittedAt: new Date() },
+      data: { status: "submitted", submittedHash: receipt.hash, submittedAt: new Date() },
     });
-    logger.info({ hash: tx.hash, chain, jobId: job.id }, "evm tx submitted");
+    logger.info({ hash: receipt.hash, chain, jobId: job.id }, "evm tx submitted");
   }
 }

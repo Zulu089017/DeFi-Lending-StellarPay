@@ -1,0 +1,335 @@
+{
+  "startedAt": "2026-11-04T08:53:33.598Z",
+  "network": "testnet",
+  "rpc": "https://soroban-testnet.stellar.org",
+  "contracts": {
+    "wrappedAsset": "CBEU47GCJ2IK3RBR2Y7Z5XVYXFIEFAKPWIO5B4IQEIZOICYM4BW6MJYC",
+    "oracle": "CBXHLNCRHAO6JPKEBKKKRCQUN6FQ4PAYB7FJH7BEMGANELPVBEAN34WU",
+    "vault": "CC5Z2WNZD2VSAC6R2HGIHJIZY5LKSGT74SQ5SLBCHGPUS4N4G56USOXH",
+    "pool": "CCPTC2QKVXFA25CJRRQD7NZZ5WSA27EBWWJH4MFFKSM27SKNKB3H5JQL",
+    "liquidation": "CDG34DGA3GSYVGDIEAUJVLTX2XOD2UDAEPFBH2FGG3VUEFEQVFQR5RX7",
+    "controller": "CDEVH2BOD4SMPNEORPO33A47PWN6A2IBAUETSF6U4XJ6FZ7IMMVMYZUI"
+  },
+  "steps": [
+    {
+      "step": "oracle.add_publisher(admin)",
+      "status": "pass",
+      "detail": "already configured (skipped)"
+    },
+    {
+      "step": "oracle.set_asset_config(XLM)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "7e26a8057a02491547939c9fe9db5cbe817847419c6525630326faafdca68733"
+    },
+    {
+      "step": "oracle.set_price(XLM)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "6f3731d7760ed62e30c5bad42f6aa2e3b92f30f43184f616c6c508e45dd62183"
+    },
+    {
+      "step": "oracle.set_asset_config(USDC)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "22d4e3a78caaa92ebdc3941f06087d49353dc73ef07a5f672b49582671c793ac"
+    },
+    {
+      "step": "oracle.set_price(USDC)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "8e0d5f41664c036c471bc74c0ab43deb10451fdd3ec8aad2b497c9e7ca18bb01"
+    },
+    {
+      "step": "oracle.set_asset_config(TKN)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "11ba7954d88a6048662bc2183d5d05e9f15f9b5608779449a8f4fc8e73d2c06a"
+    },
+    {
+      "step": "oracle.set_price(TKN)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "8fa889c59b178122816a07d4bc48de6f561f18ab674fcc6fd6e96072c1d5a24c"
+    },
+    {
+      "step": "pool.add_asset(XLM, ltv=7500)",
+      "status": "pass",
+      "detail": "already configured ltv=7500 (skipped)"
+    },
+    {
+      "step": "pool.add_asset(USDC, ltv=8000)",
+      "status": "pass",
+      "detail": "already configured ltv=8000 (skipped)"
+    },
+    {
+      "step": "pool.add_asset(TKN, ltv=5000)",
+      "status": "pass",
+      "detail": "already configured ltv=5000 (skipped)"
+    },
+    {
+      "step": "pool.add_operator(controller)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "8d1b27cbc47715f95c222cbedd36983be00130c07f4245b7909db12e23df1333"
+    },
+    {
+      "step": "pool.add_operator(liquidation)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "1db7da4cb3eaccab53d8b4f4d77ad60cdb89cf614218b42f39f6ac44f078b107"
+    },
+    {
+      "step": "vault.add_operator(controller)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "3a76a3faa57f271ffa88493119c2abf25f77130f5b50aef8b6c9e72a7265e190"
+    },
+    {
+      "step": "vault.add_operator(liquidation)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "769fe0d78591ecb7cbac34badbc18452fe59e36d76344e16ead0172eadbacef7"
+    },
+    {
+      "step": "vault.set_liq_threshold(XLM, 8500)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "d50021f6a4ae96bfff1d924a68f4df2f8c2d310c38f64b2801a0228924ef88bc"
+    },
+    {
+      "step": "wrapped_asset.set_minter(controller)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "ff90e9d6d23c03a7d5b549e31bb37227a58d69143f9c0dd80cff62a8182dc3b3"
+    },
+    {
+      "step": "controller.supply_collateral(borrower, XLM, 1000)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "cef8de575ef612989d8b06a733df374d527ad76ccc01c0de8eacfe9b56830b2c"
+    },
+    {
+      "step": "read vault.position(borrower, XLM)",
+      "status": "pass",
+      "detail": "10000000000 (expected 10000000000)"
+    },
+    {
+      "step": "read pool.deposit_shares_of(borrower, XLM)",
+      "status": "pass",
+      "detail": "26665111261 shares"
+    },
+    {
+      "step": "controller.borrow(50 USDC vs 1000 XLM)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "e2459a33b8d948e638bb91f666a9c1f22f29523da1205fa2fb9ef83488e0a698"
+    },
+    {
+      "step": "read pool.debt_of(borrower, USDC)",
+      "status": "pass",
+      "detail": "500000000"
+    },
+    {
+      "step": "LTV guard rejects over-borrow",
+      "status": "revert",
+      "detail": "reverted (trap; expected \"health factor too low\" — panic text stripped in release build)",
+      "expected": "health factor too low",
+      "matched": false,
+      "trapped": true
+    },
+    {
+      "step": "LTV guard left debt unchanged",
+      "status": "pass",
+      "detail": "500000000 → 500000000"
+    },
+    {
+      "step": "pool.repay(borrower, USDC, 1 stroop) → accrue",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "7a00fefac0b8881ae78d56dac158783a06b6118f7717514e6533e30392124353"
+    },
+    {
+      "step": "borrow_index advanced",
+      "status": "pass",
+      "detail": "1000000540651953320 → 1000000572361745303"
+    },
+    {
+      "step": "borrower debt grew with accrued interest",
+      "status": "pass",
+      "detail": "500000000 → 500000014"
+    },
+    {
+      "step": "read pool.borrow_apy_bps(USDC)",
+      "status": "pass",
+      "detail": "100 bps"
+    },
+    {
+      "step": "pool.repay(borrower, USDC, full debt)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "f62d7b202e506bea96d0d584522b496ee48d2f8bb8e2be93f45128b6c05147ff"
+    },
+    {
+      "step": "debt cleared after repay",
+      "status": "pass",
+      "detail": "0"
+    },
+    {
+      "step": "pool.withdraw(borrower, XLM, all shares)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "628af2f168528e4e2e55b739fcb69e0f107baa5a7d94191aa40f56bf8fcd8aa7"
+    },
+    {
+      "step": "deposit withdrawn",
+      "status": "pass",
+      "detail": "total_deposit(XLM) 60000000001 → 50000000002"
+    },
+    {
+      "step": "oracle.get_price(XLM) serves the fresh price",
+      "status": "pass",
+      "detail": "1000000 (expected 1000000)"
+    },
+    {
+      "step": "controller.set_paused(true)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "e2b21f3072c6b47d999dd8e1f1e320458037a12807d6119569760a27c58c807c"
+    },
+    {
+      "step": "paused controller refuses supply",
+      "status": "revert",
+      "detail": "reverted (trap; expected \"paused\" — panic text stripped in release build)",
+      "expected": "paused",
+      "matched": false,
+      "trapped": true
+    },
+    {
+      "step": "pause left the pool position unchanged",
+      "status": "pass",
+      "detail": "0 → 0 shares"
+    },
+    {
+      "step": "controller.set_paused(false)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "cb14470b098e54cecff30a4904df135520db181b90febf71b17cd6add8cea8d4"
+    },
+    {
+      "step": "controller.supply_collateral(borrower2, XLM, 1000)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "22464ed6ef6fe2315f5b564b8f23cb9b2b6fd19457419ddf6a9df8d0bae30a1b"
+    },
+    {
+      "step": "controller.borrow(borrower2: 3000 TKN vs 1000 XLM)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "c6b107440fee73bb8da4b4340df0b220d0d90305220f3a3a834149bbbbb413d5"
+    },
+    {
+      "step": "position 2 is solvent in USD (debt < collateral value)",
+      "status": "pass",
+      "detail": "debt $60 vs collateral $100.01"
+    },
+    {
+      "step": "liquidation.liquidate(healthy-in-USD position)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "0a8a4cfb38e92ede4d27e826b8ece8ce523dc9a219fc74d4d1bd3c711d996a20"
+    },
+    {
+      "step": "liquidator received seized collateral",
+      "status": "pass",
+      "detail": "2098000000 stroops XLM"
+    },
+    {
+      "step": "borrower2 collateral reduced",
+      "status": "pass",
+      "detail": "7901000000 stroops XLM"
+    },
+    {
+      "step": "controller.supply_collateral(borrower3, XLM, 1000)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "9ed2a7fc0c8e96a490f8b5f08de49bb6aae3f5cba581617b635738a91ae43a43"
+    },
+    {
+      "step": "controller.borrow(borrower3: 800 TKN vs 1000 XLM)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "d4011aa533f22317aa8537a75f9cdcbfe2eead7c316e2cf0019b54719943fd94"
+    },
+    {
+      "step": "oracle.set_price(XLM, $0.01)",
+      "status": "pass",
+      "detail": "confirmed on-chain",
+      "txHash": "e838d18af7db5889c60a515b53ee30d04bc0d38a2b13122c38a83efb3a98ae2f"
+    },
+    {
+      "step": "borrower3 is underwater in USD after the price drop",
+      "status": "pass",
+      "detail": "debt $16 vs collateral $10.001"
+    },
+    {
+      "step": "underwater position CANNOT be liquidated (raw-unit guard)",
+      "status": "revert",
+      "detail": "reverted (trap; expected \"position is healthy\" — panic text stripped in release build)",
+      "expected": "position is healthy",
+      "matched": false,
+      "trapped": true
+    },
+    {
+      "step": "blocked liquidation left borrower3 collateral untouched",
+      "status": "pass",
+      "detail": "10001000000 → 10001000000"
+    },
+    {
+      "step": "controller.wrap rejects unsigned caller",
+      "status": "revert",
+      "detail": "reverted (trap; expected \"not enough attestations\" — panic text stripped in release build)",
+      "expected": "not enough attestations",
+      "matched": false,
+      "trapped": true
+    },
+    {
+      "step": "rejected wrap minted nothing",
+      "status": "pass",
+      "detail": "total_supply 0 → 0"
+    }
+  ],
+  "findings": [
+    {
+      "id": "LIQ-RAW-UNITS",
+      "severity": "critical",
+      "summary": "liquidation.liquidate compares raw token units (vault.position >= pool.debt_of) instead of oracle-priced USD values, so a solvent position can be liquidated and an insolvent one cannot be.",
+      "evidenceTx": "0a8a4cfb38e92ede4d27e826b8ece8ce523dc9a219fc74d4d1bd3c711d996a20",
+      "evidence": "Position 2: collateral $100.01, debt $60 (HF 0 scaled 1e18) was liquidated successfully on testnet."
+    },
+    {
+      "id": "LIQ-NO-ORACLE",
+      "severity": "critical",
+      "summary": "An insolvent position (debt value > collateral value after a price crash) cannot be liquidated because liquidate() gates on raw token units, so the protocol accrues uncollectable bad debt.",
+      "evidence": "borrower3: collateral $10.001 vs debt $16; liquidate() reverted with \"position is healthy\"."
+    }
+  ],
+  "latestLedgerAtStart": 5551755,
+  "accounts": {
+    "admin": "GC3IFSRJGLDW3LRFLTK7XA7QYZDSGTP35BD6J3PTSE3FU5BVKWA7OUPY",
+    "borrower": "GC2FU2ZGWNY4VJTIXIDYAU5IYSPBUM2WUQNGC52W2ZI7KJ7ZUDLF4E37",
+    "liquidator": "GDCAPCMNIQHGYNR74VKJXDGY42LYZRH2R6WGHVMCBYFLAY34A2ACPKA2",
+    "borrower2": "GAZDIUOKEN5XKK26GFWJKANRPQJRBECR7U3DCZOINSEVSD7HH55PB7NR",
+    "borrower3": "GDNFAZU36IEQLLR3AMU5QU3GREUA5V3WT4IB5VKO5RBUTLEBLHQZYOSZ"
+  },
+  "limitations": [
+    {
+      "check": "live stale-price rejection",
+      "reason": "oracle.get_price uses effective_ttl = max(configured heartbeat, DEFAULT_TTL=300 ledgers), so staleness needs ~25 min of ledgers; not executed in this run.",
+      "coveredBy": "contracts/oracle/soroban/src/lib.rs invariant_O3 (cargo test), not by a live call"
+    }
+  ],
+  "finishedAt": "2026-11-04T09:03:50.205Z",
+  "passed": true,
+  "failures": 0
+}

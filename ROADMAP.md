@@ -24,11 +24,20 @@ This is the tightly scoped deliverable for the initial grant:
       (HSM/cold/hot) is a funded post-grant milestone
 - [ ] **Formal security audit** (Trail of Bits, quote pending — outreach
       initiated 2026-08-15, Q1 2027)
-- [x] E2E testnet flow verified (Sepolia → Stellar Testnet) — documented manual
-      run + tabletop review in `docs/e2e-testnet-flow.md` (2026-08-15)
-- [x] Testnet deployed + public demo URL — `app.spg.xyz` (2026-08-15)
-- [x] Attester keys out of plaintext env vars — `ATTESTER_KEYS_FILE` mounted
-      secret (2026-08-15); full HSM/KMS signing is a funded post-grant milestone
+- [ ] E2E testnet flow (Sepolia → Stellar Testnet) — the manual runbook exists
+      in `docs/e2e-testnet-flow.md` (2026-08-15), but the EVM `Bridge` is **not
+      deployed** to Sepolia/Amoy, so the wrap leg has never been executed end to
+      end. See [`DEPLOYMENTS.md`](DEPLOYMENTS.md).
+- [x] Testnet deployed — 7 Soroban contracts created on Stellar testnet
+      (2026-08-09); addresses and their verification status in
+      [`DEPLOYMENTS.md`](DEPLOYMENTS.md)
+- [ ] Public demo URL — **no hosted deployment exists** (`app.spg.xyz` has no
+      DNS record); run the stack locally
+- [ ] Attester keys out of plaintext env vars — the service supports
+      `ATTESTER_KEYS_FILE` (preferred over `ATTESTER_KEYS`) and it is
+      documented, but the Kubernetes manifest still provisions the secret via
+      `envFrom`; a projected Secret volume is still to be wired. Full HSM/KMS
+      signing is a funded post-grant milestone
 - [ ] Bug bounty program (Immunefi)
 
 **Grant ask:** **$200,000 USD** — 70% audit, 20% pre-audit checklist, 10%
@@ -47,7 +56,7 @@ ops/infra; see
 - [x] Prometheus + Grafana monitoring dashboards — `/metrics` on every TS
       service, scrape + alerting configs, provisioned dashboard,
       docker-compose + k8s manifests; see `docs/monitoring.md` (2026-08)
-- [ ] Disaster recovery runbook tested — doc + tabletop dry-runs complete
+- [ ] Disaster recovery runbook tested — doc + tabletop dry-run complete
       (`docs/disaster-recovery.md`); **live on-testnet dry-run pending funded
       admin keys**
 
