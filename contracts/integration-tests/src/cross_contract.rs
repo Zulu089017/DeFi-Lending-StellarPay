@@ -4,7 +4,9 @@
 //! the full protocol lifecycle. These tests verify that invariants hold
 //! across contract boundaries.
 
-use soroban_sdk::{testutils::Address as _, xdr::ToXdr, Address, BytesN, Env, String, Symbol};
+use soroban_sdk::{
+    testutils::Address as _, token, xdr::ToXdr, Address, BytesN, Env, String, Symbol,
+};
 
 use super::fuzz::FuzzRng;
 
@@ -27,6 +29,12 @@ struct ProtocolEnv {
     bridge_keys: soroban_sdk::Vec<BytesN<32>>,
     #[allow(dead_code)]
     bridge_threshold: u32,
+    xlm_token_addr: Address,
+    usdc_token_addr: Address,
+    #[allow(dead_code)]
+    xlm_token_admin: Address,
+    #[allow(dead_code)]
+    usdc_token_admin: Address,
 }
 
 fn deploy_protocol() -> ProtocolEnv {
@@ -40,6 +48,14 @@ fn deploy_protocol() -> ProtocolEnv {
         BytesN::from_array(&env, &signer.verifying_key().to_bytes()),
     ];
     let bridge_threshold: u32 = 1;
+
+    // ── Deploy test token contracts (SAC) ──
+    let xlm_token_admin = Address::generate(&env);
+    let xlm_token = env.register_stellar_asset_contract_v2(xlm_token_admin.clone());
+    let xlm_token_addr = xlm_token.address();
+    let usdc_token_admin = Address::generate(&env);
+    let usdc_token = env.register_stellar_asset_contract_v2(usdc_token_admin.clone());
+    let usdc_token_addr = usdc_token.address();
 
     // ── Deploy sub-contracts ──
     let wrapped_id = env.register(wrapped_asset::WrappedAsset {}, ());
@@ -90,16 +106,23 @@ fn deploy_protocol() -> ProtocolEnv {
     v.add_operator(&liq_id); // liquidation can seize
     v.set_liq_threshold(&Symbol::new(&env, "XLM"), &8_500u32);
     v.set_liq_threshold(&Symbol::new(&env, "USDC"), &8_500u32);
+    v.set_token_address(&Symbol::new(&env, "XLM"), &xlm_token_addr);
+    v.set_token_address(&Symbol::new(&env, "USDC"), &usdc_token_addr);
 
     // ── Initialise lending pool ──
     let p = lending_pool::LendingPoolClient::new(&env, &pool_id);
     p.initialize(&admin);
-    for asset_sym in ["XLM", "USDC"] {
+    let token_addrs = [
+        ("XLM", xlm_token_addr.clone()),
+        ("USDC", usdc_token_addr.clone()),
+    ];
+    for (asset_sym, token_addr) in token_addrs.iter() {
         p.add_asset(&lending_pool::AssetConfig {
             asset: Symbol::new(&env, asset_sym),
             collateral_vault: vault_id.clone(),
             oracle: oracle_id.clone(),
             ltoken: Address::generate(&env),
+            token_address: token_addr.clone(),
             base_rate_bps: 200,
             slope1_bps: 1_000,
             slope2_bps: 13_000,
@@ -150,6 +173,10 @@ fn deploy_protocol() -> ProtocolEnv {
         signer,
         bridge_keys,
         bridge_threshold,
+        xlm_token_addr,
+        usdc_token_addr,
+        xlm_token_admin,
+        usdc_token_admin,
     }
 }
 
@@ -200,6 +227,25 @@ fn do_wrap(pe: &ProtocolEnv, to: &Address, amount: i128, salt_seed: u8) {
     c.wrap(&atts, &chain_id, &src, &amount, to, &salt, &nonce);
 }
 
+/// Mint test tokens to a user
+fn mint_xlm(pe: &ProtocolEnv, to: &Address, amount: i128) {
+    let sac = token::StellarAssetClient::new(&pe.env, &pe.xlm_token_addr);
+    sac.mint(to, &amount);
+}
+fn mint_usdc(pe: &ProtocolEnv, to: &Address, amount: i128) {
+    let sac = token::StellarAssetClient::new(&pe.env, &pe.usdc_token_addr);
+    sac.mint(to, &amount);
+}
+/// Approve a spender to transfer tokens on behalf of user
+fn approve_xlm(pe: &ProtocolEnv, from: &Address, spender: &Address, amount: i128) {
+    let tc = token::Client::new(&pe.env, &pe.xlm_token_addr);
+    tc.approve(from, spender, &amount, &(pe.env.ledger().sequence() + 1000));
+}
+fn approve_usdc(pe: &ProtocolEnv, from: &Address, spender: &Address, amount: i128) {
+    let tc = token::Client::new(&pe.env, &pe.usdc_token_addr);
+    tc.approve(from, spender, &amount, &(pe.env.ledger().sequence() + 1000));
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
@@ -209,14 +255,12 @@ mod tests {
     // FULL LIFECYCLE
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// End-to-end: wrap → supply XLM → cross-asset borrow USDC → repay → unwrap.
+    /// End-to-end: wrap → supply collateral → supply liquidity → borrow → repay → unwrap.
     #[test]
     fn test_full_lifecycle_wrap_supply_borrow_repay_unwrap() {
         let pe = deploy_protocol();
-        let user = Address::from_str(
-            &pe.env,
-            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-        );
+        let user = Address::generate(&pe.env);
+        let lp = Address::generate(&pe.env);
         let xlm = Symbol::new(&pe.env, "XLM");
         let usdc = Symbol::new(&pe.env, "USDC");
 
@@ -225,27 +269,44 @@ mod tests {
         let w = wrapped_asset::WrappedAssetClient::new(&pe.env, &pe.wrapped_id);
         assert_eq!(w.balance(&user), 50_000_000_000);
 
-        // 2. Supply XLM collateral + liquidity via the controller.
+        // 2. Fund accounts with real tokens and set approvals
+        mint_xlm(&pe, &user, 100_000_000_000i128);
+        mint_xlm(&pe, &lp, 200_000_000_000i128);
+        mint_usdc(&pe, &lp, 100_000_000_000i128);
+        mint_usdc(&pe, &user, 10_000_000_000i128); // for repayment
+        approve_xlm(&pe, &user, &pe.vault_id, 1_000_000_000_000i128);
+        approve_xlm(&pe, &lp, &pe.pool_id, 1_000_000_000_000i128);
+        approve_usdc(&pe, &lp, &pe.pool_id, 1_000_000_000_000i128);
+        approve_usdc(&pe, &user, &pe.pool_id, 1_000_000_000_000i128);
+
+        // 3. Supply liquidity to pool (LP provides XLM and USDC for borrowing)
+        let p = lending_pool::LendingPoolClient::new(&pe.env, &pe.pool_id);
+        let _shares = p.supply(&lp, &xlm, &100_000_000_000i128);
+        p.supply(&lp, &usdc, &50_000_000_000i128);
+        assert!(p.total_deposit(&xlm) >= 100_000_000_000);
+        assert!(p.total_deposit(&usdc) >= 50_000_000_000);
+
+        // 4. Supply collateral to vault via controller
         let c = lending_controller::LendingControllerClient::new(&pe.env, &pe.ctrl_id);
         c.supply_collateral(&user, &xlm, &50_000_000_000i128);
+        let v = collateral_vault::CollateralVaultClient::new(&pe.env, &pe.vault_id);
+        assert!(v.position(&user, &xlm) >= 50_000_000_000);
 
-        let p = lending_pool::LendingPoolClient::new(&pe.env, &pe.pool_id);
-        let shares = p.deposit_shares_of(&user, &xlm);
-        assert!(shares > 0, "should have minted XLM deposit shares");
-
-        // 3. Cross-asset borrow: post 40B XLM collateral (= $4B at $0.10/XLM),
-        //    borrow 500M USDC (= $500M at $1.00, LTV = 12.5%, well within 75%).
-        c.borrow(&user, &xlm, &40_000_000_000i128, &usdc, &500_000_000i128);
+        // 5. Borrow USDC against XLM collateral
+        p.borrow(&user, &usdc, &500_000_000i128);
         let debt = p.debt_of(&user, &usdc);
         assert!(debt >= 500_000_000, "should have recorded USDC debt");
+        // Verify real token transfer: user received USDC
+        let usdc_client = token::Client::new(&pe.env, &pe.usdc_token_addr);
+        assert!(usdc_client.balance(&user) >= 10_500_000_000i128);
 
-        // 4. Partial repay: repay 250M USDC.
+        // 6. Partial repay
         let repaid = p.repay(&user, &usdc, &250_000_000i128);
         assert!(repaid > 0);
         let debt_after = p.debt_of(&user, &usdc);
         assert!(debt_after < debt, "USDC debt should decrease after repay");
 
-        // 5. Unwrap: burn remaining wrapped tokens.
+        // 7. Unwrap: burn remaining wrapped tokens.
         let nonce = c.unwrap(
             &user,
             &5_000_000_000i128,

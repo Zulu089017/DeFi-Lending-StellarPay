@@ -91,8 +91,11 @@ Tracks locked collateral per user per asset.
 
 ### Oracle (`contracts/oracle/soroban`)
 
-Price feed contract. Intended to integrate with Chainlink or a Stellar reflect
-oracle.
+Price feed contract (`contracts/oracle/soroban`). Implements a `Reflector`-style
+on-chain price feed adapter with publisher allow-list, median-of-≥2 aggregation
+and heartbeat staleness checks. **Not** a Chainlink feed integration, and
+**not** a Stellar Reflect feed integration; both are described only as intended
+integration points, with Chainlink on the roadmap as a planned item.
 
 ### Liquidation Engine (`contracts/liquidation/soroban`)
 

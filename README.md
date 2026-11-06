@@ -64,10 +64,28 @@ StellarPay is a **middleware + protocol** pair:
 1. **Cross-chain bridge middleware** (`services/payment`, `Bridge.sol`) that
    locks or burns a canonical token on a source chain (Ethereum, Polygon) and
    mints a wrapped representation (`wETH`, `wUSDC`) on Stellar after a threshold
-   of independent attester signatures.
+   of independent attester signatures. The Solana watcher scaffold exists but is
+   not a working bridge implementation — Solana is **planned**.
+
+> **Solana:** the README says "Solana" in a few places. Only Ethereum and
+> Polygon have a working bridge implementation today; Solana
+> (`services/payment/src/chains/solana.ts`) is a scaffold / planned. The bridge
+> is also **lock-and-mint only** — the unwrap → `Bridge.release` leg is
+> implemented and unit-tested but not wired end to end (Issue #71).
+
 2. **A lending protocol** written in Soroban (Rust) that lets those wrapped
    assets — and native assets such as XLM — be supplied, borrowed against
-   collateral, repaid, and liquidated.
+   collateral, repaid, and liquidated. The bridge today is **lock-and-mint**:
+   locking a canonical token on the source chain mints a wrapped asset on
+   Stellar, but the reverse unwrap → release leg is not yet wired (Issue #71).
+
+> **Oracle wording:** the README says "Chainlink/Stellar Reflect oracle" in some
+> places. Only a Stellar on-chain oracle contract is implemented today
+> (`contracts/oracle/soroban`) — it is a `Reflector`-style price feed adapter
+> with publisher allow-list, median-of-≥2 aggregation and heartbeat staleness
+> checks, not a Chainlink feed integration and not a Stellar Reflect feed
+> integration; both are described only as intended integration points. Chainlink
+> is on the roadmap as a planned item.
 
 The point of settling the money market on Stellar is cost and latency: transfers
 and liquidations cost fractions of a cent and settle in seconds, which is what
@@ -85,27 +103,28 @@ makes an always-on, permissionless liquidation engine practical.
 
 ## Feature overview
 
-| Feature                                               | Where it lives                                                         | Tests                                                   | Status                                                                |
-| ----------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
-| Supply / withdraw (share-priced)                      | `contracts/lending/soroban`                                            | `invariant_*` + unit tests                              | Implemented, tested                                                   |
-| Borrow / repay (index-based debt)                     | `contracts/lending/soroban`                                            | `invariant_*` + unit tests                              | Implemented, tested                                                   |
-| Collateral accounting (vault positions)               | `contracts/collateral/soroban`                                         | `invariant_*` + unit tests                              | Implemented, tested                                                   |
-| Health factor + LTV enforcement                       | `contracts/lending/soroban`                                            | property test `prop_health_factor_monotonic`            | Implemented, tested                                                   |
-| Interest accrual (utilisation curve with kink)        | `contracts/lending/soroban`                                            | unit + property tests                                   | Implemented, tested                                                   |
-| Permissionless liquidation (close factor, bonus, fee) | `contracts/liquidation/soroban`                                        | `invariant_Q*` + unit tests                             | Implemented, tested                                                   |
-| Oracle (multi-publisher, staleness heartbeat)         | `contracts/oracle/soroban`                                             | `invariant_O*`                                          | Implemented, tested                                                   |
-| Bridge attestation pipeline (ed25519, 2-of-3)         | `contracts/lending/controller`, `services/payment`                     | Rust + TS signer cross-language digest canary           | Implemented, tested                                                   |
-| Replay protection (salt reuse → revert)               | `contracts/lending/controller`, `Bridge.sol`                           | `invariant_C2`, `B-1`                                   | Implemented, tested                                                   |
-| EIP-712 domain separation on EVM release              | `contracts/lending/evm/Bridge.sol`                                     | `B-7` regression test                                   | Implemented, tested                                                   |
-| Mint rate circuit breaker + pause surface             | `contracts/lending/controller`                                         | `invariant_C3`, `C4`, `C5`, `B-6`                       | Implemented, tested                                                   |
-| Off-chain relayer / watcher                           | `services/cron`                                                        | vitest                                                  | Implemented, tested                                                   |
-| Event indexer (Postgres)                              | `services/indexer`                                                     | vitest + live RPC smoke                                 | Implemented, tested (Soroban `getEvents` + EVM logs)                  |
-| Public REST + WebSocket API                           | `apps/api`                                                             | vitest (30 tests)                                       | Implemented, tested                                                   |
-| Next.js dashboard                                     | `apps/web`                                                             | vitest (3 tests) + `next lint`                          | Implemented, tested                                                   |
-| TypeScript SDK                                        | `packages/sdk`                                                         | vitest (7 tests)                                        | Implemented, tested                                                   |
-| Unwrap → EVM `Bridge.release` pipeline                | `services/payment` (`events/unwrap.ts`, `release/evmRelease.ts`)       | vitest (state machine + EIP-712)                        | Implemented, unit-tested; **not run against a live EVM deployment**   |
-| Cross-system invariants X-1…X-4                       | `services/payment/src/invariants.ts`, `services/indexer/src/reconcile` | vitest incl. randomised X-1 flow + scheduled reconciler | Implemented; reconciler runs on a schedule and persists audit history |
-| Mainnet deployment, audit, bug bounty                 | —                                                                      | —                                                       | **Planned**                                                           |
+| Feature                                               | Where it lives                                                         | Tests                                                   | Status                                                                                                                                                                                   |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Supply / withdraw (share-priced)                      | `contracts/lending/soroban`                                            | `invariant_*` + unit tests                              | Implemented, tested                                                                                                                                                                      |
+| Borrow / repay (index-based debt)                     | `contracts/lending/soroban`                                            | `invariant_*` + unit tests                              | Implemented, tested                                                                                                                                                                      |
+| Collateral accounting (vault positions)               | `contracts/collateral/soroban`                                         | `invariant_*` + unit tests                              | Implemented, tested                                                                                                                                                                      |
+| Health factor + LTV enforcement                       | `contracts/lending/soroban`                                            | property test `prop_health_factor_monotonic`            | Implemented, tested                                                                                                                                                                      |
+| Interest accrual (utilisation curve with kink)        | `contracts/lending/soroban`                                            | unit + property tests                                   | Implemented, tested                                                                                                                                                                      |
+| Permissionless liquidation (close factor, bonus, fee) | `contracts/liquidation/soroban`                                        | `invariant_Q*` + unit tests                             | Implemented, tested                                                                                                                                                                      |
+| Oracle (multi-publisher, staleness heartbeat)         | `contracts/oracle/soroban`                                             | `invariant_O*`                                          | Implemented, tested                                                                                                                                                                      |
+| Bridge attestation pipeline (ed25519, 2-of-3)         | `contracts/lending/controller`, `services/payment`                     | Rust + TS signer cross-language digest canary           | Implemented, tested — **lock-and-mint only** (unwrap → release leg not wired, see #71); **Solana path is not implemented — the Solana watcher is a scaffold; Solana support is planned** |
+| Replay protection (salt reuse → revert)               | `contracts/lending/controller`, `Bridge.sol`                           | `invariant_C2`, `B-1`                                   | Implemented, tested                                                                                                                                                                      |
+| EIP-712 domain separation on EVM release              | `contracts/lending/evm/Bridge.sol`                                     | `B-7` regression test                                   | Implemented, tested — part of the EVM release path that is not yet wired end to end                                                                                                      |
+| Mint rate circuit breaker + pause surface             | `contracts/lending/controller`                                         | `invariant_C3`, `C4`, `C5`, `B-6`                       | Implemented, tested                                                                                                                                                                      |
+| Off-chain relayer / watcher                           | `services/cron`                                                        | vitest                                                  | Implemented, tested                                                                                                                                                                      |
+| Unwrap → EVM `Bridge.release` pipeline                | `services/payment` (`events/unwrap.ts`, `release/evmRelease.ts`)       | vitest (state machine + EIP-712)                        | Implemented, unit-tested; unwrap → release wiring not completed (see #71)                                                                                                                |
+| Event indexer (Postgres)                              | `services/indexer`                                                     | vitest + live RPC smoke                                 | Implemented, tested (Soroban `getEvents` + EVM logs)                                                                                                                                     |
+| Public REST + WebSocket API                           | `apps/api`                                                             | vitest (30 tests)                                       | Implemented, tested                                                                                                                                                                      |
+| Next.js dashboard                                     | `apps/web`                                                             | vitest (3 tests) + `next lint`                          | Implemented, tested                                                                                                                                                                      |
+| TypeScript SDK                                        | `packages/sdk`                                                         | vitest (7 tests)                                        | Implemented, tested                                                                                                                                                                      |
+| Unwrap → EVM `Bridge.release` pipeline                | `services/payment` (`events/unwrap.ts`, `release/evmRelease.ts`)       | vitest (state machine + EIP-712)                        | Implemented, unit-tested; **not run against a live EVM deployment**                                                                                                                      |
+| Cross-system invariants X-1…X-4                       | `services/payment/src/invariants.ts`, `services/indexer/src/reconcile` | vitest incl. randomised X-1 flow + scheduled reconciler | Implemented; reconciler runs on a schedule and persists audit history                                                                                                                    |
+| Mainnet deployment, audit, bug bounty                 | —                                                                      | —                                                       | **Planned**                                                                                                                                                                              |
 
 A per-feature breakdown (implementation → tests → config → verification status)
 is in [`docs/feature-evidence.md`](docs/feature-evidence.md).
@@ -175,11 +194,12 @@ docs/               # protocol documentation
 
 ## Supported networks
 
-| Network                                                   | Status                           | Notes                                                                                                                    |
-| --------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **Stellar testnet** (`Test SDF Network ; September 2015`) | Active                           | Soroban contracts deployed 2026-11-04; the superseded 2026-08-09 set is preserved in [`DEPLOYMENTS.md`](DEPLOYMENTS.md). |
-| **Ethereum Sepolia / Polygon Amoy**                       | Contract ready, **not deployed** | `Bridge` compiles and its test suite passes; deployment requires a funded deployer key.                                  |
-| Stellar mainnet                                           | Not planned yet                  | No mainnet deployment, no audit, no bug bounty.                                                                          |
+| Network                                                   | Status                           | Notes                                                                                                                                                                            |
+| --------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stellar testnet** (`Test SDF Network ; September 2015`) | Active                           | Soroban contracts deployed 2026-11-04; the superseded 2026-08-09 set is preserved in [`DEPLOYMENTS.md`](DEPLOYMENTS.md).                                                         |
+| **Ethereum Sepolia / Polygon Amoy**                       | Contract ready, **not deployed** | `Bridge` compiles and its test suite passes; deployment requires a funded deployer key. **Ethereum and Polygon are the only chains with a working bridge implementation today.** |
+| **Solana**                                                | **Planned**                      | A watcher scaffold (`services/payment/src/chains/solana.ts`) exists but is not a working bridge; Solana support is on the roadmap.                                               |
+| Stellar mainnet                                           | Not planned yet                  | No mainnet deployment, no audit, no bug bounty.                                                                                                                                  |
 
 ## Prerequisites
 
@@ -295,10 +315,14 @@ pnpm --filter @stellar-payment-gateway/dashboard dev # apps/web         :3000
 
 The end-to-end path a user exercises (and how to run it locally):
 
-1. **Wrap** — lock the canonical token on the source chain (`Bridge.lock`), wait
-   for the off-chain watcher (`services/payment`) to collect `attester`
-   signatures, then call `lending_controller.wrap` with the attestation. The
-   controller mints the wrapped asset on Stellar.
+1. **Wrap (lock-and-mint)** — lock the canonical token on the source chain
+   (`Bridge.lock`), wait for the off-chain watcher (`services/payment`) to
+   collect `attester` signatures, then call `lending_controller.wrap` with the
+   attestation. The controller mints the wrapped asset on Stellar. The reverse
+   path — Stellar unwrap → `Bridge.release` on the source chain — is **not yet
+   wired** (Issue #71), so the bridge is lock-and-mint, not a full two-way
+   bridge. (There is no Solana bridge path to wrap from today — Solana is
+   planned.)
 2. **Supply collateral** — `lending_controller.supply_collateral` deposits into
    `collateral_vault` and supplies to `lending_pool`.
 3. **Borrow** — `lending_controller.borrow` prices the collateral through
@@ -355,7 +379,11 @@ A scripted, manual walkthrough of the same flow on testnet lives in
 > Note: the deployed EVM bridge is **not** live yet (`Bridge` addresses in
 > `DEPLOYMENTS.md` are placeholders), so the _wrap_ leg of the flow requires a
 > local `Bridge` deployment or the test fixtures. The lending legs (supply →
-> borrow → repay → liquidate) run against the deployed Soroban contracts.
+> borrow → repay → liquidate) run against the deployed Soroban contracts. The
+> bridge is currently **lock-and-mint only**: the unwrap → `Bridge.release` leg
+> is implemented and unit-tested, but it has not been wired end to end (Issue
+> #71). Solana is not bridged today — wrapping is from Ethereum and Polygon
+> only.
 
 ## Tests and CI status
 

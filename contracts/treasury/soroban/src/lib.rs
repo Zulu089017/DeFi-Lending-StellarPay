@@ -23,6 +23,8 @@ pub enum DataKey {
     Balance(Address),
     /// Total supply
     TotalSupply,
+    /// Underlying token address for backing (optional)
+    UnderlyingToken,
 }
 
 #[contracttype]
@@ -213,6 +215,18 @@ impl WrappedAsset {
         admin.require_auth();
         env.storage().instance().set(&DataKey::Minter, &new_minter);
         SetMinter { new_minter }.publish(&env);
+    }
+
+    pub fn set_underlying_token(env: Env, underlying: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set");
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::UnderlyingToken, &underlying);
     }
 }
 

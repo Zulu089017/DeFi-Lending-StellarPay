@@ -38,7 +38,8 @@ EVM), **off-chain services** (bridge, relayer, indexer, API), an **SDK**, and a
 │  │ Pool     │ │ Vault    │ │          │ │ Engine           │   │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘   │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐   │
-│  │Governance│ │ Rewards  │ │ Treasury │ │EVM Bridge (Sol)  │   │
+│  │Governance│ │ Rewards  │ │ Treasury │ │EVM Bridge (EVM)  │   │
+Note: the Solana watcher scaffold (`services/payment/src/chains/solana.ts`) is not a working bridge; Solana is planned.
 │  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -57,7 +58,12 @@ EVM), **off-chain services** (bridge, relayer, indexer, API), an **SDK**, and a
 7. Indexer picks up Horizon event → API pushes via WebSocket
 ```
 
-### Unwrap (Stellar → EVM)
+### Unwrap (Stellar → EVM) — **not wired yet** (Issue #71)
+
+The unwrap → release path is implemented in the code
+(`lending_controller.unwrap`, `services/payment` unwrap watcher and EIP-712
+release submitter) and unit-tested, but it has **not been wired end to end**
+(Issue #71). The flow below is the intended design once wired:
 
 ```
 1. User calls lending_controller.unwrap()
@@ -67,6 +73,10 @@ EVM), **off-chain services** (bridge, relayer, indexer, API), an **SDK**, and a
 5. Relayer submits Bridge.release() on EVM chain
 6. EVM chain releases original tokens to user
 ```
+
+Until wired, a Stellar unwrap burns the wrapped asset but does **not** release
+on EVM. Solana is **not** a source chain today — the Solana watcher is a
+scaffold, not a working bridge; wrapping is from Ethereum and Polygon only.
 
 ## Contract Architecture
 
@@ -101,11 +111,14 @@ close_factor = 50% max per tx
 
 ### Bridge Middleware (services/payment)
 
-Event-driven poller that:
+Event-driven poller that is **lock-and-mint only today**:
 
-1. Watches EVM/Solana Locked/Burned events
+1. Watches EVM Locked/Burned events (not Solana — the Solana watcher is a
+   scaffold, not a working bridge; Solana is planned).
 2. Collects Ed25519 attestation signatures
-3. Submits mint/burn transactions to Soroban
+3. Submits mint transactions to Soroban for wraps; the unwrap `Bridge.release`
+   pipeline exists and is unit-tested but is **not wired end to end** (Issue
+   #71), so a Stellar unwrap does not yet release tokens on EVM.
 4. Exposes `/health` endpoint for K8s probes
 
 ### Indexer (services/indexer)
@@ -122,7 +135,8 @@ Streams Horizon ledgers + EVM logs → Postgres:
 Transaction relayer with retry + gas bumping:
 
 1. Picks up signed transactions from queue
-2. Submits to target chain (Stellar/EVM/Solana)
+2. Submits to target chain (Stellar/EVM; Solana relaying is planned and not a
+   working bridge today)
 3. Retries with exponential backoff
 4. Bumps gas on EVM transactions when needed
 

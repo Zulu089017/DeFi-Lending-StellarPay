@@ -211,7 +211,10 @@ insolvent position liquidates). The rewrite has **not** been re-run under
 > randomised X-1 conservation test), and the `unwrap` → `Bridge.release`
 > pipeline that produces their inputs is wired in
 > `services/payment/src/{chains/stellar.ts,release/evmRelease.ts}` with state
-> machine tests.
+> machine tests. Note: this pipeline is **not yet wired end to end** against a
+> live `Bridge.release` (Issue #71); the contract-defined path exists but the
+> on-chain-to-off-chain wiring that would produce real EVM `Released` events has
+> not been completed.
 >
 > **Live reconciliation (2026-11-01).** `services/indexer/src/reconcile/`
 > evaluates X-1…X-4 against real inputs: on-chain views are read with
@@ -227,5 +230,7 @@ insolvent position liquidates). The rewrite has **not** been re-run under
 > EVM `Bridge` is deployed, so the checks currently pass on empty state; (2) X-1
 > is an aggregate token check, since the indexer does not model a per-token
 > mapping between EVM tokens and wrapped Stellar assets; (3) the release
-> pipeline still has not been exercised against a live `Bridge`. Migration
-> history: [`contracts/BUILD_ENV_NOTES.md`](../contracts/BUILD_ENV_NOTES.md).
+> pipeline (unwrap → `Bridge.release`) still has not been exercised against a
+> live `Bridge` — this is Issue #71; it is implemented and unit-tested but not
+> wired end to end. Migration history:
+> [`contracts/BUILD_ENV_NOTES.md`](../contracts/BUILD_ENV_NOTES.md).

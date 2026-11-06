@@ -6,7 +6,7 @@
 
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
 
 #[contracttype]
 #[derive(Clone)]
@@ -20,6 +20,8 @@ pub enum DataKey {
     TotalByAsset(Symbol),
     /// asset => liquidation threshold in bps (e.g. 8500 = 85%)
     LiqThreshold(Symbol),
+    /// asset => token contract address
+    TokenAddress(Symbol),
 }
 
 #[contract]
@@ -52,11 +54,28 @@ impl CollateralVault {
             .set(&DataKey::LiqThreshold(asset), &bps);
     }
 
+    pub fn set_token_address(env: Env, asset: Symbol, token_address: Address) {
+        Self::require_admin(&env);
+        env.storage()
+            .persistent()
+            .set(&DataKey::TokenAddress(asset), &token_address);
+    }
+
     /// Operator deposits `amount` of `asset` on behalf of `user` as collateral.
     pub fn deposit(env: Env, op: Address, user: Address, asset: Symbol, amount: i128) {
         Self::require_operator(&env, &op);
         if amount <= 0 {
             panic!("amount must be positive");
+        }
+
+        // Transfer tokens from user to vault
+        if let Some(token_addr) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Address>(&DataKey::TokenAddress(asset.clone()))
+        {
+            let token_client = token::Client::new(&env, &token_addr);
+            token_client.transfer(&user, &env.current_contract_address(), &amount);
         }
 
         let pos_key = DataKey::Position(user.clone(), asset.clone());
@@ -84,6 +103,17 @@ impl CollateralVault {
         if pos < amount {
             panic!("insufficient collateral");
         }
+
+        // Transfer tokens from vault to user
+        if let Some(token_addr) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Address>(&DataKey::TokenAddress(asset.clone()))
+        {
+            let token_client = token::Client::new(&env, &token_addr);
+            token_client.transfer(&env.current_contract_address(), &user, &amount);
+        }
+
         env.storage().persistent().set(&pos_key, &(pos - amount));
 
         let total_key = DataKey::TotalByAsset(asset.clone());
@@ -105,6 +135,17 @@ impl CollateralVault {
         if pos < amount {
             panic!("insufficient collateral to seize");
         }
+
+        // Transfer tokens from vault to recipient
+        if let Some(token_addr) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Address>(&DataKey::TokenAddress(asset.clone()))
+        {
+            let token_client = token::Client::new(&env, &token_addr);
+            token_client.transfer(&env.current_contract_address(), &to, &amount);
+        }
+
         env.storage().persistent().set(&pos_key, &(pos - amount));
 
         let recv_key = DataKey::Position(to.clone(), asset.clone());

@@ -280,20 +280,11 @@ impl LendingController {
         }
         Self::require_not_paused(&env);
         // Cross-contract calls:
-        //   (1) lending_pool.supply(user, asset, amount) — record supply liquidity
-        //   (2) collateral_vault.deposit(controller, user, asset, amount) — lock collateral
+        //   (1) collateral_vault.deposit(controller, user, asset, amount) — lock collateral (real token transfer)
+        //   (2) lending_pool.supply_collateral(user, asset, amount) — record collateral accounting for health checks
         let pool = Self::lending_pool(&env);
         let vault = Self::collateral_vault(&env);
         let controller_addr = env.current_contract_address();
-
-        let fn_supply = Symbol::new(&env, "supply");
-        let supply_args: Vec<Val> = soroban_sdk::vec![
-            &env,
-            user.into_val(&env),
-            asset.into_val(&env),
-            amount.into_val(&env),
-        ];
-        let _shares: i128 = env.invoke_contract(&pool, &fn_supply, supply_args);
 
         let fn_deposit = Symbol::new(&env, "deposit");
         let deposit_args: Vec<Val> = soroban_sdk::vec![
@@ -304,6 +295,15 @@ impl LendingController {
             amount.into_val(&env),
         ];
         let _: () = env.invoke_contract(&vault, &fn_deposit, deposit_args);
+
+        let fn_supply_collateral = Symbol::new(&env, "supply_collateral");
+        let sc_args: Vec<Val> = soroban_sdk::vec![
+            &env,
+            user.into_val(&env),
+            asset.into_val(&env),
+            amount.into_val(&env),
+        ];
+        let _: () = env.invoke_contract(&pool, &fn_supply_collateral, sc_args);
 
         Supply {
             user,
@@ -501,11 +501,8 @@ impl LendingController {
 
         // (1) Existing collateral position.
         let fn_position = Symbol::new(&env, "position");
-        let position_args: Vec<Val> = soroban_sdk::vec![
-            &env,
-            user.into_val(&env),
-            collateral_asset.into_val(&env),
-        ];
+        let position_args: Vec<Val> =
+            soroban_sdk::vec![&env, user.into_val(&env), collateral_asset.into_val(&env),];
         let existing: i128 = env.invoke_contract(&vault, &fn_position, position_args);
         if existing < amount {
             panic!("insufficient collateral");
@@ -578,11 +575,7 @@ impl LendingController {
     /// # Panics
     /// - `"max_per_hour must be positive"` if `max_per_hour <= 0`
     /// - `"not enough admin approvals"` when raising the cap without quorum
-    pub fn set_mint_rate_limit(
-        env: Env,
-        approvals: Vec<Address>,
-        max_per_hour: i128,
-    ) {
+    pub fn set_mint_rate_limit(env: Env, approvals: Vec<Address>, max_per_hour: i128) {
         if max_per_hour <= 0 {
             panic!("max_per_hour must be positive");
         }
@@ -2262,10 +2255,7 @@ mod tests {
     fn test_repay_reduces_debt() {
         let te = setup();
         let TestEnv {
-            env,
-            pool,
-            ctrl,
-            ..
+            env, pool, ctrl, ..
         } = &te;
         let user = Address::generate(env);
         let collat_asset = Symbol::new(env, "XLM");
@@ -2274,13 +2264,7 @@ mod tests {
         configure_asset(&te, &debt_asset, 7_500);
 
         ctrl.supply_collateral(&user, &collat_asset, &100_000_000i128);
-        ctrl.borrow(
-            &user,
-            &collat_asset,
-            &1i128,
-            &debt_asset,
-            &1_000_000i128,
-        );
+        ctrl.borrow(&user, &collat_asset, &1i128, &debt_asset, &1_000_000i128);
 
         let pool_client = lending_pool::LendingPoolClient::new(env, pool);
         let debt_before = pool_client.debt_of(&user, &debt_asset);
@@ -2301,10 +2285,7 @@ mod tests {
     fn test_repay_capped_at_outstanding_balance() {
         let te = setup();
         let TestEnv {
-            env,
-            pool,
-            ctrl,
-            ..
+            env, pool, ctrl, ..
         } = &te;
         let user = Address::generate(env);
         let collat_asset = Symbol::new(env, "XLM");
@@ -2313,13 +2294,7 @@ mod tests {
         configure_asset(&te, &debt_asset, 7_500);
 
         ctrl.supply_collateral(&user, &collat_asset, &100_000_000i128);
-        ctrl.borrow(
-            &user,
-            &collat_asset,
-            &1i128,
-            &debt_asset,
-            &500_000i128,
-        );
+        ctrl.borrow(&user, &collat_asset, &1i128, &debt_asset, &500_000i128);
 
         let repaid = ctrl.repay(&user, &debt_asset, &10_000_000i128);
         assert_eq!(repaid, 500_000i128, "repay must be capped at the debt");
@@ -2343,10 +2318,7 @@ mod tests {
     fn test_withdraw_collateral_succeeds_when_healthy() {
         let te = setup();
         let TestEnv {
-            env,
-            vault,
-            ctrl,
-            ..
+            env, vault, ctrl, ..
         } = &te;
         let user = Address::generate(env);
         let collat_asset = Symbol::new(env, "XLM");
@@ -2356,13 +2328,7 @@ mod tests {
 
         ctrl.supply_collateral(&user, &collat_asset, &100_000_000i128);
         // $10M collateral, $1M debt → 10% LTV.
-        ctrl.borrow(
-            &user,
-            &collat_asset,
-            &1i128,
-            &debt_asset,
-            &1_000_000i128,
-        );
+        ctrl.borrow(&user, &collat_asset, &1i128, &debt_asset, &1_000_000i128);
 
         // Withdrawing half the collateral leaves $5M value against $1M debt
         // (20% LTV) — well within the 75% limit.
@@ -2383,11 +2349,7 @@ mod tests {
     #[should_panic(expected = "health factor too low")]
     fn test_withdraw_collateral_ltv_breach_reverts() {
         let te = setup();
-        let TestEnv {
-            env,
-            ctrl,
-            ..
-        } = &te;
+        let TestEnv { env, ctrl, .. } = &te;
         let user = Address::generate(env);
         let collat_asset = Symbol::new(env, "XLM");
         let debt_asset = Symbol::new(env, "USDC");
@@ -2396,13 +2358,7 @@ mod tests {
 
         // $1M collateral, $0.7M debt → 70% LTV (inside the limit).
         ctrl.supply_collateral(&user, &collat_asset, &10_000_000i128);
-        ctrl.borrow(
-            &user,
-            &collat_asset,
-            &1i128,
-            &debt_asset,
-            &700_000i128,
-        );
+        ctrl.borrow(&user, &collat_asset, &1i128, &debt_asset, &700_000i128);
 
         // Withdrawing 2M XLM leaves $0.8M of value → max debt $0.6M < $0.7M.
         ctrl.withdraw_collateral(&user, &collat_asset, &2_000_000i128);
@@ -2413,11 +2369,7 @@ mod tests {
     #[should_panic(expected = "insufficient collateral")]
     fn test_withdraw_collateral_insufficient_reverts() {
         let te = setup();
-        let TestEnv {
-            env,
-            ctrl,
-            ..
-        } = &te;
+        let TestEnv { env, ctrl, .. } = &te;
         let user = Address::generate(env);
         let collat_asset = Symbol::new(env, "XLM");
         configure_asset(&te, &collat_asset, 7_500);
@@ -2431,10 +2383,7 @@ mod tests {
     fn test_withdraw_collateral_full_with_no_debt() {
         let te = setup();
         let TestEnv {
-            env,
-            vault,
-            ctrl,
-            ..
+            env, vault, ctrl, ..
         } = &te;
         let user = Address::generate(env);
         let collat_asset = Symbol::new(env, "XLM");
@@ -2482,10 +2431,7 @@ mod tests {
         let te = setup();
         let TestEnv { env, ctrl, .. } = &te;
         let outsider = Address::generate(env);
-        ctrl.add_admin(
-            &soroban_sdk::vec![env, outsider],
-            &Address::generate(env),
-        );
+        ctrl.add_admin(&soroban_sdk::vec![env, outsider], &Address::generate(env));
     }
 
     /// R-MS-3: the same admin cannot be counted twice toward the quorum.

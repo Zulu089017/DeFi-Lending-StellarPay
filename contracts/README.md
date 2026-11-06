@@ -5,14 +5,14 @@ The on-chain core of the StellarPay protocol, written in Rust for
 
 ## Contracts
 
-| Contract             | Purpose                                                         |
-| -------------------- | --------------------------------------------------------------- |
-| `wrapped_asset`      | Canonical wrapped token (wTKN) — mint/burn driven by the bridge |
-| `oracle`             | Price feed aggregator (Reflector / Chainlink reflect)           |
-| `collateral_vault`   | Per-asset collateral accounting                                 |
-| `lending_pool`       | Supply, borrow, repay, withdraw; interest-rate model            |
-| `liquidation`        | Automated liquidation engine                                    |
-| `lending_controller` | Orchestrator + cross-chain entrypoint                           |
+| Contract             | Purpose                                                                                                                                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wrapped_asset`      | Canonical wrapped token (wTKN) — mint/burn driven by the bridge                                                                                                                                                                                         |
+| `oracle`             | Price feed adapter (`Reflector`-style on-chain with publisher allow-list, median-of-≥2 aggregation and heartbeat staleness). **Not** a Chainlink feed integration and **not** a Stellar Reflect feed integration; Chainlink is planned, not integrated. |
+| `collateral_vault`   | Per-asset collateral accounting                                                                                                                                                                                                                         |
+| `lending_pool`       | Supply, borrow, repay, withdraw; interest-rate model                                                                                                                                                                                                    |
+| `liquidation`        | Automated liquidation engine                                                                                                                                                                                                                            |
+| `lending_controller` | Orchestrator + cross-chain entrypoint                                                                                                                                                                                                                   |
 
 ## Build
 

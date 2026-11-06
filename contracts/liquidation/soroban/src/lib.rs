@@ -123,10 +123,8 @@ impl Liquidation {
         // This is the inverse of the controller's borrow-time LTV check.
         let asset_ltv_bps = Self::asset_ltv_bps(&env, &cfg.pool, &collateral_asset);
         let effective_ltv_bps = asset_ltv_bps.min(MAX_LTV_BPS) as i128;
-        let max_debt_for_collateral = coll_value
-            .checked_mul(effective_ltv_bps)
-            .expect("overflow")
-            / 10_000i128;
+        let max_debt_for_collateral =
+            coll_value.checked_mul(effective_ltv_bps).expect("overflow") / 10_000i128;
         if debt_value <= max_debt_for_collateral {
             panic!("position healthy");
         }
@@ -152,10 +150,7 @@ impl Liquidation {
 
         let bonus_mult = 10_000i128 + cfg.bonus_bps as i128;
         // seize_value_usd = repay_value * (1 + bonus_bps/10000)
-        let seize_value_usd = repay_value
-            .checked_mul(bonus_mult)
-            .expect("overflow")
-            / 10_000i128;
+        let seize_value_usd = repay_value.checked_mul(bonus_mult).expect("overflow") / 10_000i128;
 
         // Convert USD value back to collateral token units.
         // value_of returns: amount * price / 10^7 (7-dec token units convention)
@@ -174,10 +169,7 @@ impl Liquidation {
             .checked_mul(cfg.fee_bps as i128)
             .expect("overflow")
             / 10_000i128;
-        let fee_units = fee_value_usd
-            .checked_mul(10_000_000i128)
-            .expect("overflow")
-            / coll_price;
+        let fee_units = fee_value_usd.checked_mul(10_000_000i128).expect("overflow") / coll_price;
 
         let seize_amount = seize_units_total.saturating_sub(fee_units);
         if seize_amount <= 0 {
@@ -192,9 +184,14 @@ impl Liquidation {
 
         // ── 6. Repay debt on behalf of borrower (liquidator pays) ──
         // The liquidation contract itself is the registered pool operator.
-        // It calls repay_on_behalf with its own address as the payer/operator
-        // so that auth + operator checks pass.
-        Self::pool_repay_on_behalf(&env, &cfg.pool, &borrower, &debt_asset, &repay_amount);
+        Self::pool_repay_on_behalf(
+            &env,
+            &cfg.pool,
+            &liquidator,
+            &borrower,
+            &debt_asset,
+            &repay_amount,
+        );
 
         // ── 7. Seize collateral: borrower → liquidator ──
         let liq_addr = env.current_contract_address();
@@ -276,13 +273,13 @@ impl Liquidation {
         env.invoke_contract(vault, &fn_name, args)
     }
 
-    /// Call `pool.repay_on_behalf(payer, borrower, asset, amount)`.
-    /// Uses the liquidation contract's own address as the payer/operator
-    /// so that the pool's `require_operator` check passes (the liquidation
-    /// contract is registered as a pool operator during initialization).
+    /// Call `pool.repay_on_behalf(op, payer, borrower, asset, amount)`.
+    /// Uses the liquidation contract's own address as the operator
+    /// so that the pool's `require_operator` check passes.
     fn pool_repay_on_behalf(
         env: &Env,
         pool: &Address,
+        payer: &Address,
         borrower: &Address,
         asset: &Symbol,
         amount: &i128,
@@ -292,6 +289,7 @@ impl Liquidation {
         let args: Vec<Val> = soroban_sdk::vec![
             env,
             liq_addr.into_val(env),
+            payer.into_val(env),
             borrower.into_val(env),
             asset.into_val(env),
             amount.into_val(env),
@@ -338,7 +336,7 @@ impl Liquidation {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{testutils::Address as _, token};
 
     /// Deploy pool + vault + oracle for liquidation tests so
     /// `liquidate` can read real oracle-priced state and execute cross-contract calls.
@@ -350,19 +348,29 @@ mod tests {
         pool_id: Address,
         vault_client: collateral_vault::CollateralVaultClient<'a>,
         vault_id: Address,
+        #[allow(dead_code)]
         oracle_client: oracle::OracleClient<'a>,
         oracle_id: Address,
         #[allow(dead_code)]
         wrapped_client: wrapped_asset::WrappedAssetClient<'a>,
         asset: Symbol,
+        #[allow(dead_code)]
         admin: Address,
+        token_addr: Address,
+        token_admin: Address,
     }
 
     fn setup_liq() -> LiqTestEnv<'static> {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let treasury = Address::generate(&env);
+
+        // Deploy test token (SAC)
+        let token_admin = Address::generate(&env);
+        let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+        let token_addr = token_contract.address();
 
         // Deploy sub-contracts.
         let vault_id = env.register(collateral_vault::CollateralVault {}, ());
@@ -381,6 +389,7 @@ mod tests {
         let vault_client = collateral_vault::CollateralVaultClient::new(&env.clone(), &vault_id);
         vault_client.initialize(&admin);
         vault_client.add_operator(&liq_id); // liq is operator for seize
+        vault_client.add_operator(&pool_id); // pool may need for some flows
 
         let pool_client = lending_pool::LendingPoolClient::new(&env.clone(), &pool_id);
         pool_client.initialize(&admin);
@@ -409,6 +418,7 @@ mod tests {
             collateral_vault: vault_id.clone(),
             oracle: oracle_id.clone(),
             ltoken: Address::generate(&env),
+            token_address: token_addr.clone(),
             base_rate_bps: 200,
             slope1_bps: 1_000,
             slope2_bps: 13_000,
@@ -416,6 +426,8 @@ mod tests {
             reserve_factor_bps: 1_000,
             ltv_bps: 7_500,
         });
+
+        vault_client.set_token_address(&asset, &token_addr);
 
         let liq_contract = LiquidationClient::new(&env.clone(), &liq_id);
         liq_contract.initialize(
@@ -444,26 +456,74 @@ mod tests {
             wrapped_client,
             asset,
             admin,
+            token_addr,
+            token_admin,
         }
     }
 
-    /// Set up an underwater borrower: supply 1000, borrow 900 (HF=1.11).
-    /// Then the tests manipulate further as needed.
+    /// Set up an underwater borrower with real token transfers.
     #[allow(dead_code)]
     fn make_borrower(te: &LiqTestEnv, collateral: i128, borrow: i128) -> (Address, Address) {
         let user = Address::generate(&te.env);
-        // Supply liquidity and collateral so borrow succeeds.
+        let lp = Address::generate(&te.env);
+        let sac = token::StellarAssetClient::new(&te.env, &te.token_addr);
+        let tc = token::Client::new(&te.env, &te.token_addr);
+        // Fund LP and user
+        sac.mint(&lp, &(collateral * 10));
+        sac.mint(&user, &(collateral * 10));
+        // Approvals
+        tc.approve(
+            &lp,
+            &te.pool_id,
+            &(collateral * 20),
+            &(te.env.ledger().sequence() + 1000),
+        );
+        tc.approve(
+            &user,
+            &te.pool_id,
+            &(collateral * 20),
+            &(te.env.ledger().sequence() + 1000),
+        );
+        tc.approve(
+            &user,
+            &te.vault_id,
+            &(collateral * 20),
+            &(te.env.ledger().sequence() + 1000),
+        );
+        // LP supplies liquidity to pool
+        te.pool_client.supply(&lp, &te.asset, &(collateral * 5));
+        // User supplies collateral accounting in pool and deposits to vault
         te.pool_client
             .supply_collateral(&user, &te.asset, &collateral);
-        te.pool_client.supply(&user, &te.asset, &collateral);
-        te.pool_client.borrow(&user, &te.asset, &borrow);
-        // Also give the user vault collateral via a direct vault deposit
-        // (in production the controller does this; here we simulate it).
         te.vault_client
             .deposit(&te.liq_id, &user, &te.asset, &collateral);
+        te.pool_client.borrow(&user, &te.asset, &borrow);
         (user, te.liq_id.clone())
     }
 
+    fn fund_and_approve(te: &LiqTestEnv, user: &Address, amount: i128) {
+        let sac = token::StellarAssetClient::new(&te.env, &te.token_addr);
+        let tc = token::Client::new(&te.env, &te.token_addr);
+        sac.mint(user, &amount);
+        tc.approve(
+            user,
+            &te.pool_id,
+            &(amount * 10),
+            &(te.env.ledger().sequence() + 1000),
+        );
+        tc.approve(
+            user,
+            &te.vault_id,
+            &(amount * 10),
+            &(te.env.ledger().sequence() + 1000),
+        );
+    }
+    fn fund_lp(te: &LiqTestEnv, amount: i128) -> Address {
+        let lp = Address::generate(&te.env);
+        fund_and_approve(te, &lp, amount * 5);
+        te.pool_client.supply(&lp, &te.asset, &amount);
+        lp
+    }
     // ═══════════════════════════════════════════════════════════════════════
     // BASIC
     // ═══════════════════════════════════════════════════════════════════════
@@ -473,9 +533,10 @@ mod tests {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 100_000i128);
+        fund_and_approve(&te, &liquidator, 100_000i128);
 
         // Set up borrower: 10,000 collateral in vault, 12,000 debt in pool
-        // (debt > vault collateral ensures the position is underwater).
         te.pool_client
             .supply_collateral(&borrower, &te.asset, &12_000i128);
         te.pool_client.supply(&borrower, &te.asset, &12_000i128);
@@ -522,11 +583,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "position is healthy")]
+    #[should_panic(expected = "position healthy")]
     fn test_healthy_position_reverts() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
 
         // Healthy position: collateral > debt.
         te.pool_client
@@ -545,12 +608,13 @@ mod tests {
     fn test_close_factor_enforced() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
+        fund_lp(&te, 20_000i128);
 
-        // Underwater: debt=10,000, coll=5,000.
         te.pool_client
-            .supply_collateral(&borrower, &te.asset, &5_000i128);
-        te.pool_client.supply(&borrower, &te.asset, &5_000i128);
+            .supply_collateral(&borrower, &te.asset, &12_000i128);
         te.pool_client.borrow(&borrower, &te.asset, &10_000i128);
         te.vault_client
             .deposit(&te.liq_id, &borrower, &te.asset, &5_000i128);
@@ -569,7 +633,9 @@ mod tests {
     fn invariant_Q3_Q4_liquidator_share_formula() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
 
         // Underwater: 10,000 vault, 12,000 debt.
         te.pool_client
@@ -605,7 +671,9 @@ mod tests {
     fn invariant_Q5_partial_liquidation_reduces_debt() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
 
         // Underwater: 10,000 vault, 12,000 debt.
         te.pool_client
@@ -635,7 +703,9 @@ mod tests {
     fn invariant_Q6_full_liquidation_at_close_factor() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
 
         // Underwater: 10,000 vault, 12,000 debt.
         te.pool_client
@@ -667,7 +737,9 @@ mod tests {
     fn invariant_Q7_liquidator_always_profits() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
 
         // Underwater: 10,000 vault, 12,000 debt.
         te.pool_client
@@ -703,7 +775,9 @@ mod tests {
     fn invariant_Q8_zero_amount_liquidation_reverts() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
         te.liq_contract
             .liquidate(&liquidator, &borrower, &te.asset, &te.asset, &0i128);
     }
@@ -714,7 +788,9 @@ mod tests {
     fn invariant_Q9_negative_amount_liquidation_reverts() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
         te.liq_contract
             .liquidate(&liquidator, &borrower, &te.asset, &te.asset, &-1i128);
     }
@@ -729,7 +805,9 @@ mod tests {
     fn regression_solvent_position_never_liquidated() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
 
         te.pool_client
             .supply_collateral(&borrower, &te.asset, &10_000i128);
@@ -747,22 +825,20 @@ mod tests {
     fn regression_insolvent_position_liquidatable() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
 
+        fund_lp(&te, 20_000i128);
         te.pool_client
-            .supply_collateral(&borrower, &te.asset, &5_000i128);
-        te.pool_client.supply(&borrower, &te.asset, &5_000i128);
+            .supply_collateral(&borrower, &te.asset, &12_000i128);
         te.pool_client.borrow(&borrower, &te.asset, &10_000i128);
         te.vault_client
             .deposit(&te.liq_id, &borrower, &te.asset, &5_000i128);
 
-        let seized = te.liq_contract.liquidate(
-            &liquidator,
-            &borrower,
-            &te.asset,
-            &te.asset,
-            &2_000i128,
-        );
+        let seized =
+            te.liq_contract
+                .liquidate(&liquidator, &borrower, &te.asset, &te.asset, &2_000i128);
         assert!(seized > 0, "insolvent position should be liquidatable");
         let debt_after = te.pool_client.debt_of(&borrower, &te.asset);
         assert!(debt_after < 10_000i128, "debt must decrease");
@@ -774,7 +850,9 @@ mod tests {
     fn regression_boundary_ltv_exactly_at_limit() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
 
         te.pool_client
             .supply_collateral(&borrower, &te.asset, &10_000i128);
@@ -792,7 +870,9 @@ mod tests {
     fn regression_boundary_just_above_ltv_limit() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
 
         te.pool_client
             .supply_collateral(&borrower, &te.asset, &10_000i128);
@@ -801,13 +881,9 @@ mod tests {
         te.vault_client
             .deposit(&te.liq_id, &borrower, &te.asset, &10_000i128);
 
-        let seized = te.liq_contract.liquidate(
-            &liquidator,
-            &borrower,
-            &te.asset,
-            &te.asset,
-            &1_000i128,
-        );
+        let seized =
+            te.liq_contract
+                .liquidate(&liquidator, &borrower, &te.asset, &te.asset, &1_000i128);
         assert!(seized > 0, "position just above LTV should be liquidatable");
     }
 
@@ -817,7 +893,9 @@ mod tests {
     fn regression_missing_oracle_price_reverts() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
         let bad_asset = Symbol::new(&te.env, "NOPE");
 
         te.pool_client.add_asset(&lending_pool::AssetConfig {
@@ -825,6 +903,7 @@ mod tests {
             collateral_vault: te.vault_id.clone(),
             oracle: te.oracle_id.clone(),
             ltoken: Address::generate(&te.env),
+            token_address: te.token_addr.clone(),
             base_rate_bps: 200,
             slope1_bps: 1_000,
             slope2_bps: 13_000,
@@ -832,6 +911,8 @@ mod tests {
             reserve_factor_bps: 1_000,
             ltv_bps: 7_500,
         });
+        te.vault_client
+            .set_token_address(&bad_asset, &te.token_addr);
         te.pool_client
             .supply_collateral(&borrower, &bad_asset, &5_000i128);
         te.pool_client.supply(&borrower, &bad_asset, &5_000i128);
@@ -848,34 +929,29 @@ mod tests {
     fn regression_repeated_partial_liquidation() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator1 = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator1, 10_000_000i128);
         let liquidator2 = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator2, 10_000_000i128);
+        fund_lp(&te, 30_000i128);
 
         te.pool_client
-            .supply_collateral(&borrower, &te.asset, &10_000i128);
-        te.pool_client.supply(&borrower, &te.asset, &10_000i128);
+            .supply_collateral(&borrower, &te.asset, &20_000i128);
         te.pool_client.borrow(&borrower, &te.asset, &15_000i128);
         te.vault_client
             .deposit(&te.liq_id, &borrower, &te.asset, &10_000i128);
 
-        let seized1 = te.liq_contract.liquidate(
-            &liquidator1,
-            &borrower,
-            &te.asset,
-            &te.asset,
-            &3_000i128,
-        );
+        let seized1 =
+            te.liq_contract
+                .liquidate(&liquidator1, &borrower, &te.asset, &te.asset, &3_000i128);
         assert!(seized1 > 0);
         let debt_after_1 = te.pool_client.debt_of(&borrower, &te.asset);
         assert!(debt_after_1 < 15_000i128);
 
-        let seized2 = te.liq_contract.liquidate(
-            &liquidator2,
-            &borrower,
-            &te.asset,
-            &te.asset,
-            &3_000i128,
-        );
+        let seized2 =
+            te.liq_contract
+                .liquidate(&liquidator2, &borrower, &te.asset, &te.asset, &3_000i128);
         assert!(seized2 > 0);
         let debt_after_2 = te.pool_client.debt_of(&borrower, &te.asset);
         assert!(debt_after_2 < debt_after_1);
@@ -886,7 +962,9 @@ mod tests {
     fn regression_oracle_priced_seize_includes_bonus() {
         let te = setup_liq();
         let borrower = Address::generate(&te.env);
+        fund_and_approve(&te, &borrower, 10_000_000i128);
         let liquidator = Address::generate(&te.env);
+        fund_and_approve(&te, &liquidator, 10_000_000i128);
 
         te.pool_client
             .supply_collateral(&borrower, &te.asset, &10_000i128);
@@ -899,6 +977,9 @@ mod tests {
         let seized =
             te.liq_contract
                 .liquidate(&liquidator, &borrower, &te.asset, &te.asset, &repay);
-        assert!(seized >= repay, "seized ({seized}) must be >= repay ({repay})");
+        assert!(
+            seized >= repay,
+            "seized ({seized}) must be >= repay ({repay})"
+        );
     }
 }

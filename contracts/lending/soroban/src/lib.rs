@@ -13,7 +13,9 @@
 mod pause;
 use pause::{is_paused, require_not_paused, set_paused};
 
-use soroban_sdk::{contract, contractevent, contractimpl, contracttype, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contractevent, contractimpl, contracttype, token, Address, Env, Symbol,
+};
 
 /// Virtual shares offset to defeat the first-depositor share-inflation
 /// attack. Both VIRTUAL_SHARES and VIRTUAL_DEPOSIT are set to 1M (7-decimal
@@ -56,7 +58,8 @@ pub struct AssetConfig {
     pub asset: Symbol,
     pub collateral_vault: Address,
     pub oracle: Address,
-    pub ltoken: Address, // share-token contract
+    pub ltoken: Address,        // share-token contract
+    pub token_address: Address, // underlying asset token contract (SAC)
     pub base_rate_bps: u32,
     pub slope1_bps: u32,
     pub slope2_bps: u32,
@@ -180,6 +183,11 @@ impl LendingPool {
         }
         Self::accrue_interest(&env, &asset);
 
+        // Transfer tokens from user to the pool
+        let cfg = Self::asset_config(&env, &asset);
+        let token_client = token::Client::new(&env, &cfg.token_address);
+        token_client.transfer(&user, &env.current_contract_address(), &amount);
+
         let total_d = Self::total_deposit(&env, &asset);
         let total_shares = Self::deposit_shares_total(&env, &asset);
 
@@ -235,6 +243,11 @@ impl LendingPool {
                 .checked_add(VIRTUAL_SHARES)
                 .expect("overflow")
                 .max(1);
+
+        // Transfer tokens from pool to user
+        let cfg = Self::asset_config(&env, &asset);
+        let token_client = token::Client::new(&env, &cfg.token_address);
+        token_client.transfer(&env.current_contract_address(), &user, &amount);
 
         env.storage().persistent().set(&key, &(cur - shares));
         env.storage()
@@ -326,17 +339,17 @@ impl LendingPool {
     }
 
     /// Repay a borrower's debt on their behalf. Caller must be a registered
-    /// operator (e.g. the liquidation contract). The `payer` authorises the
-    /// call; the `borrower` is the user whose debt is being reduced.
+    /// operator (e.g. the liquidation contract). The `payer` provides the tokens.
     pub fn repay_on_behalf(
         env: Env,
+        op: Address,
         payer: Address,
         borrower: Address,
         asset: Symbol,
         amount: i128,
     ) -> i128 {
-        payer.require_auth();
-        Self::require_operator(&env, &payer);
+        op.require_auth();
+        Self::require_operator(&env, &op);
         Self::repay_internal(&env, &payer, &borrower, &asset, amount)
     }
 
@@ -464,6 +477,11 @@ impl LendingPool {
             }
         }
 
+        // Transfer borrowed tokens from pool to user
+        let cfg = Self::asset_config(env, asset);
+        let token_client = token::Client::new(env, &cfg.token_address);
+        token_client.transfer(&env.current_contract_address(), user, &amount);
+
         let key = DataKey::Borrower(user.clone(), asset.clone());
         let idx = Self::borrow_index(env, asset);
         let snap: BorrowerSnapshot =
@@ -492,7 +510,7 @@ impl LendingPool {
 
     fn repay_internal(
         env: &Env,
-        _payer: &Address,
+        payer: &Address,
         borrower: &Address,
         asset: &Symbol,
         amount: i128,
@@ -523,6 +541,14 @@ impl LendingPool {
         } else {
             amount
         };
+
+        // Transfer repayment tokens from payer to pool
+        if repaid > 0 {
+            let cfg = Self::asset_config(env, asset);
+            let token_client = token::Client::new(env, &cfg.token_address);
+            token_client.transfer(payer, &env.current_contract_address(), &repaid);
+        }
+
         let new_principal = total_owed - repaid;
 
         env.storage().persistent().set(
@@ -638,6 +664,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -665,6 +692,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -704,6 +732,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -737,6 +766,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -774,6 +804,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -807,6 +838,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -840,6 +872,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -866,6 +899,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -897,6 +931,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -940,6 +975,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -984,6 +1020,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1029,6 +1066,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1058,6 +1096,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1090,6 +1129,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1120,6 +1160,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1155,6 +1196,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1183,6 +1225,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1221,6 +1264,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1253,6 +1297,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1286,6 +1331,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1323,6 +1369,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1356,6 +1403,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1383,6 +1431,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
@@ -1411,6 +1460,7 @@ mod tests {
             collateral_vault: Address::generate(&env),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 0,
             slope1_bps: 500,
             slope2_bps: 5_000,
