@@ -1,5 +1,5 @@
 import { Address as ScAddress } from "@stellar/stellar-sdk";
-import type { SourceChainId, UnwrapEvent } from "../types.js";
+import type { SourceChainId } from "../types.js";
 
 /** EVM chain ids the release pipeline can serve. Keep this in sync with
  *  `services/payment/src/mint/stellarMinter.ts` (wrap side) and with the
@@ -19,8 +19,19 @@ export interface RawUnwrapMeta {
   ledger: number | bigint;
 }
 
-export interface DecodedUnwrap extends Omit<UnwrapEvent, "chain"> {
+export interface DecodedUnwrap {
   chain: "stellar";
+  txHash: string;
+  ledger: bigint;
+  user: string;
+  amount: bigint;
+  chainId: number;
+  sourceChain: SourceChainId;
+  sourceAddr: string;
+  nonce: string;
+  released?: boolean;
+  destination?: string;
+  releaseTxHash?: string | null;
 }
 
 /** Decode the native (JS) representation of a `#[contractevent] Unwrap`
