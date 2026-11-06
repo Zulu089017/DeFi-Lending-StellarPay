@@ -480,7 +480,7 @@ async function main() {
   ];
 
   // ── 8. Pause controls ─────────────────────────────────────────────────────
-  await mustSucceed("controller.set_paused(true)", admin, C.controller, "set_paused", [nativeToScVal(true, { type: "bool" })]);
+  await mustSucceed("controller.set_paused(true)", admin, C.controller, "set_paused", [scv.addr(admin.publicKey()), nativeToScVal(true, { type: "bool" })]);
   const sharesBeforePauseAttempt = await read(C.pool, "deposit_shares_of", [
     scv.addr(borrower.publicKey()),
     scv.symbol("XLM"),
@@ -502,7 +502,7 @@ async function main() {
     sharesBeforePauseAttempt === sharesAfterPauseAttempt ? "pass" : "fail",
     `${sharesBeforePauseAttempt} → ${sharesAfterPauseAttempt} shares`,
   );
-  await mustSucceed("controller.set_paused(false)", admin, C.controller, "set_paused", [nativeToScVal(false, { type: "bool" })]);
+  await mustSucceed("controller.set_paused(false)", admin, C.controller, "set_paused", [scv.addr(admin.publicKey()), nativeToScVal(false, { type: "bool" })]);
 
   // ── 9. Liquidation ────────────────────────────────────────────────────────
   // Set up a second borrower whose position is deliberately *healthy in USD*

@@ -68,8 +68,8 @@
 - **Automatic backstop:** the only on-chain backstop is `check_mint_rate`, which
   — as noted above — is a transaction-count limiter and therefore does **not**
   bound minted value. The practical bound is the **emergency pause**: once
-  detected, `set_paused(true)` (admin, direct) stops minting immediately, and
-  attester rotation completes within the 24h timelock.
+  detected, `set_paused(admin, true)` (admin, direct) stops minting immediately,
+  and attester rotation completes within the 24h timelock.
   - Ref: `docs/disaster-recovery.md` § Scenario 3.
 - **Residual risk — known limitation.** A value-based mint cap (derived from the
   wrapped asset's oracle-priced value) and a per-asset cap are **not yet

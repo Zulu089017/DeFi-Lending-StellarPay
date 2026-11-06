@@ -1,5 +1,14 @@
 import manifest_ from "./manifest.json" with { type: "json" };
-import type { Manifest, StellarPayConfig, WrapRequest, WrapResult, UnwrapRequest, Market, Position, StreamEvent } from "./types.js";
+import type {
+  Manifest,
+  StellarPayConfig,
+  WrapRequest,
+  WrapResult,
+  UnwrapRequest,
+  Market,
+  Position,
+  StreamEvent,
+} from "./types.js";
 import { ethers } from "ethers";
 import {
   Horizon,
@@ -80,9 +89,7 @@ export class StellarPay {
   async unwrap(req: UnwrapRequest): Promise<{ stellarTx: string }> {
     const source = await this.stellar.server.loadAccount(this.stellar.publicKey);
     // keep in sync with lending_controller.unwrap: source_addr is BytesN<32>
-    const saHex = req.sourceAddr.startsWith("0x")
-      ? req.sourceAddr.slice(2)
-      : req.sourceAddr;
+    const saHex = req.sourceAddr.startsWith("0x") ? req.sourceAddr.slice(2) : req.sourceAddr;
     let sourceAddrBytes: Buffer;
     if (/^[0-9a-fA-F]{40,64}$/.test(saHex)) {
       sourceAddrBytes = Buffer.from(saHex.padStart(64, "0"), "hex");
@@ -103,14 +110,14 @@ export class StellarPay {
             nativeToScVal(BigInt(req.amount), { type: "i128" }),
             nativeToScVal(this.chainIdToU32(req.sourceChain), { type: "u32" }),
             // NB: we use `scvBytes` (variable-length) here even though the
-        // contract declares `source_addr: BytesN<32>` (fixed-size 32).
-        // The @stellar/stellar-sdk v12 JS bindings do not expose a
-        // `scvBytesN` helper, but a 32-byte buffer serialised through
-        // `scvBytes` produces the same on-wire bytes for a `BytesN<32>`
-        // parameter. If the SDK ever adds `scvBytesN`, switch to it for
-        // a stronger compile-time guarantee. See `docs/invariants.md`
-        // § 6 (C-6) for the protocol's domain-separation rule.
-        xdr.ScVal.scvBytes(sourceAddrBytes),
+            // contract declares `source_addr: BytesN<32>` (fixed-size 32).
+            // The @stellar/stellar-sdk v12 JS bindings do not expose a
+            // `scvBytesN` helper, but a 32-byte buffer serialised through
+            // `scvBytes` produces the same on-wire bytes for a `BytesN<32>`
+            // parameter. If the SDK ever adds `scvBytesN`, switch to it for
+            // a stronger compile-time guarantee. See `docs/invariants.md`
+            // § 6 (C-6) for the protocol's domain-separation rule.
+            xdr.ScVal.scvBytes(sourceAddrBytes),
           ],
         }) as any,
       )
@@ -149,7 +156,12 @@ export class StellarPay {
     ]);
   }
 
-  async borrow(opts: { collateralAsset: string; collateralAmount: string; debtAsset: string; borrowAmount: string }): Promise<{ hash: string }> {
+  async borrow(opts: {
+    collateralAsset: string;
+    collateralAmount: string;
+    debtAsset: string;
+    borrowAmount: string;
+  }): Promise<{ hash: string }> {
     return this.invokeController("borrow", [
       ScAddress.fromString(this.stellar.publicKey).toScVal(),
       nativeToScVal(opts.collateralAsset, { type: "symbol" }),
@@ -167,7 +179,12 @@ export class StellarPay {
     ]);
   }
 
-  async liquidate(opts: { borrower: string; debtAsset: string; collateralAsset: string; repayAmount: string }): Promise<{ hash: string }> {
+  async liquidate(opts: {
+    borrower: string;
+    debtAsset: string;
+    collateralAsset: string;
+    repayAmount: string;
+  }): Promise<{ hash: string }> {
     return this.invokeController("liquidate", [
       ScAddress.fromString(this.stellar.publicKey).toScVal(),
       ScAddress.fromString(opts.borrower).toScVal(),

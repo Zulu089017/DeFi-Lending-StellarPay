@@ -47,7 +47,7 @@
 **Recovery** (within 15 min):
 
 1. Immediately pause the bridge controller on Stellar: \
-   `lending_controller.set_paused(true)` (requires admin multisig).
+   `lending_controller.set_paused(admin, true)` (requires admin multisig).
 2. Rotate the compromised key: update the attester set on the EVM `Bridge`
    contract.
 3. Update the attester secret — rotate `ATTESTER_KEYS_FILE` / `ATTESTER_KEYS` in
@@ -86,8 +86,8 @@ upgrade.
 
 1. **Pause EVM bridges**: call `Bridge.setPaused(true)` on each chain
    (multisig).
-2. **Pause Stellar controller**: call `lending_controller.set_paused(true)`
-   (multisig).
+2. **Pause Stellar controller**: call
+   `lending_controller.set_paused(admin, true)` (multisig).
 3. **Pause API writes**: toggle the `API_READ_ONLY=true` env var.
 4. Communicate via Twitter/Discord/status page.
 
@@ -105,11 +105,11 @@ Pause is the **first response** to any of the following (P1 by default):
 
 **Who can trigger:**
 
-| Surface | Call                                  | Authority                                                                     |
-| ------- | ------------------------------------- | ----------------------------------------------------------------------------- |
-| Stellar | `lending_controller.set_paused(true)` | Admin multi-set (threshold), direct — no timelock by design for fast response |
-| EVM     | `Bridge.setPaused(true)` (per chain)  | Multisig                                                                      |
-| API     | `API_READ_ONLY=true`                  | Ops (k8s rollout)                                                             |
+| Surface | Call                                         | Authority                                                                     |
+| ------- | -------------------------------------------- | ----------------------------------------------------------------------------- |
+| Stellar | `lending_controller.set_paused(admin, true)` | Admin multi-set (threshold), direct — no timelock by design for fast response |
+| EVM     | `Bridge.setPaused(true)` (per chain)         | Multisig                                                                      |
+| API     | `API_READ_ONLY=true`                         | Ops (k8s rollout)                                                             |
 
 > Pausing the controller halts all state-changing entry points (supply,
 > withdraw, supply_collateral, withdraw_collateral, borrow, repay) — see
@@ -167,13 +167,13 @@ run.
 
 1. `curl -s localhost:4100/metrics | grep bridge_mints_total` — note baseline.
 2. Pause the Stellar controller (admin multisig):
-   `lending_controller.set_paused(true)`.
+   `lending_controller.set_paused(admin, true)`.
 3. Rotate the EVM attester set: `Bridge.setAttesters(newKeys, threshold)`
    (multisig).
 4. Rotate the secret: replace the value in the `payment-env` secret and restart
    the bridge deployment (`kubectl rollout restart deploy/bridge`).
 5. Verify no new mints: `bridge_mints_total` unchanged during the window.
-6. Unpause (`set_paused(false)`) and confirm the next wrap succeeds.
+6. Unpause (`set_paused(admin, false)`) and confirm the next wrap succeeds.
 7. Record timestamp + result in the tabletop log below (new row).
 
 ### Scenario 5 live — oracle staleness
