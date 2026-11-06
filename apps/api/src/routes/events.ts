@@ -43,7 +43,6 @@ export async function eventsRoutes(app: FastifyInstance) {
       user: row.user,
       amount: row.amount,
       chainId: row.chainId,
-      sourceChain: row.sourceChain,
       sourceAddr: row.sourceAddr,
       nonce: row.nonce,
       // <<#71 split-release>> back-side release fields.
@@ -53,7 +52,6 @@ export async function eventsRoutes(app: FastifyInstance) {
       releaseAttempts: row.releaseAttempts,
       status: row.status,
       createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
     }));
   });
 
@@ -72,7 +70,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     return rows.map((row) => ({
       txHash: row.txHash,
       nonce: row.nonce,
-      sourceChain: row.sourceChain,
+      chainId: row.chainId,
       sourceAddr: row.sourceAddr,
       amount: row.amount,
       released: row.released,

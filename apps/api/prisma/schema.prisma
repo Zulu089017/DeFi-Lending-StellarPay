@@ -39,7 +39,15 @@ model UnwrapEvent {
   sourceAddr  String
   nonce       String
   released    Boolean
-  createdAt   DateTime
+  // Back-side release outcome. These come from the EVM `Bridge.release`
+  // pipeline (edge of #71 / `services/payment`), so they are `String?` /
+  // absent on rows the unwrap watcher recorded and no relayer has touched.
+  destination String?
+  releaseTxHash String?
+  releaseAttempts Int     @default(0)
+  lastError     String?
+  status        String    @default("pending") // pending | released | failed
+  createdAt     DateTime
 
   @@unique([txHash, nonce])
 }

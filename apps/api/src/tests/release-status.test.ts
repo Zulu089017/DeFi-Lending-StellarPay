@@ -18,13 +18,11 @@ describe("GET /v1/release-status", () => {
           user: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
           amount: 1_000_000n,
           chainId: 1,
-          sourceChain: "ethereum",
           sourceAddr: "0x" + "22".repeat(32),
           nonce: "0x" + "33".repeat(32),
           released: false,
           releaseTxHash: null,
           createdAt: new Date(),
-          updatedAt: new Date(),
         },
         {
           id: "unwrap-2",
@@ -33,13 +31,11 @@ describe("GET /v1/release-status", () => {
           user: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
           amount: 2_000_000n,
           chainId: 1,
-          sourceChain: "ethereum",
           sourceAddr: "0x" + "55".repeat(32),
           nonce: "0x" + "66".repeat(32),
           released: true,
           releaseTxHash: "0x" + "77".repeat(32),
           createdAt: new Date(),
-          updatedAt: new Date(),
         },
       ],
     });
@@ -55,7 +51,7 @@ describe("GET /v1/release-status", () => {
       expect(rows[0].released).toBe(false);
       expect(rows[0].releaseTxHash).toBeNull();
       expect(rows[0].releaseAttempts).toBe(0);
-      expect(rows[0].sourceChain).toBe("ethereum");
+      expect(rows[0].chainId).toBe(1);
       // The terminal unlock event is not advertised: only not-yet-released
       // rows are surfaced so indexer reconciliation can see the pending
       // frontier.
@@ -73,13 +69,11 @@ describe("GET /v1/release-status", () => {
         user: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
         amount: 1_000_000n,
         chainId: 1,
-        sourceChain: "ethereum",
         sourceAddr: "0x" + "22".repeat(32),
         nonce: "0x" + "33".repeat(32),
         released: true,
         releaseTxHash: "0x" + "44".repeat(32),
         createdAt: new Date(),
-        updatedAt: new Date(),
       },
     });
 
@@ -108,7 +102,6 @@ describe("GET /v1/unwrap-events", () => {
         user: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
         amount: 1_000_000n,
         chainId: 1,
-        sourceChain: "ethereum",
         sourceAddr: "0x" + "22".repeat(32),
         nonce: "0x" + "33".repeat(32),
         destination: "0x" + "44".repeat(32),
@@ -117,7 +110,6 @@ describe("GET /v1/unwrap-events", () => {
         releaseAttempts: 1,
         status: "released",
         createdAt: new Date(),
-        updatedAt: new Date(),
       },
     });
 
