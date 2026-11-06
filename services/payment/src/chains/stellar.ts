@@ -2,7 +2,8 @@ import { rpc, nativeToScVal, scValToNative } from "@stellar/stellar-sdk";
 import { config } from "../config.js";
 import { saveUnwrap, markUnwrapFailed, prisma } from "../store/db.js";
 import type { UnwrapEvent } from "../types.js";
-import { decodeUnwrapValue } from "../events/unwrap.js";
+import { decodeUnwrapValue, DecodedUnwrap } from "../events/unwrap.js";
+import { UnwrapEnqueuer } from "../release/queue.js";
 import { logger } from "../utils/logger.js";
 import { bridgeUnwrapsIngestedTotal } from "../utils/metrics.js";
 
@@ -30,9 +31,11 @@ export class StellarUnwrapWatcher {
   private controller: string;
   private cursor: string | null = null;
   private enabled: boolean;
+  private unwrapEnqueuer: UnwrapEnqueuer;
 
   constructor() {
     this.controller = config.STELLAR_CONTROLLER;
+    this.unwrapEnqueuer = new UnwrapEnqueuer();
     if (!config.STELLAR_SOROBAN_RPC) {
       this.server = null;
       this.enabled = false;
@@ -66,6 +69,33 @@ export class StellarUnwrapWatcher {
       },
       "unwrap watcher cold start",
     );
+  }
+
+  /** Convert a decoded `UnwrapEvent` (the decoder output) into a full
+   *  persisted-row `UnwrapEvent`. The back-side release fields are initialised
+   *  to their defaults; `EvmReleaser` overwrites them once the release is
+   *  confirmed on-chain.
+   */
+  private toUnwrapEvent(ev: DecodedUnwrap): UnwrapEvent {
+    // Save the row exactly once (idempotent on txHash + nonce) so a re-run
+    // cannot mutate a row that a release attempt already advanced.
+    return {
+      chain: ev.chain,
+      txHash: ev.txHash,
+      ledger: ev.ledger,
+      user: ev.user,
+      amount: ev.amount,
+      chainId: ev.chainId,
+      sourceChain: ev.sourceChain,
+      sourceAddr: ev.sourceAddr,
+      nonce: ev.nonce,
+      destination: "0x" + "00".repeat(32),
+      status: "pending",
+      released: false,
+      releaseTxHash: null,
+      releaseAttempts: 0,
+      lastError: null,
+    };
   }
 
   /** Poll once and return newly persisted unwraps. */
@@ -107,8 +137,12 @@ export class StellarUnwrapWatcher {
           txHash: raw.txHash,
           ledger: raw.ledger,
         });
-        await saveUnwrap(decoded);
-        events.push(decoded);
+        // Persist the row exactly once (idempotent on txHash + nonce), then
+        // enqueue it for the release pipeline in the same poll interval.
+        const row = this.toUnwrapEvent(decoded);
+        await saveUnwrap(row);
+        await this.unwrapEnqueuer.enqueue(row);
+        events.push(row);
         bridgeUnwrapsIngestedTotal.inc();
       } catch (err) {
         // Persist the failure so operators can see it (and so a malformed

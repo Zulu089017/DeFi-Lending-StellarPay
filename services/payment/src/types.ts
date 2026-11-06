@@ -47,6 +47,15 @@ export interface UnwrapEvent {
   sourceChain: SourceChainId;
   sourceAddr: string; // 0x + 32 bytes hex
   nonce: string; // 0x + 32 bytes hex
+  // Back-side fields: set by the EVM release pipeline once the release is
+  // confirmed on-chain. `UnwrapEvent.released` is the terminal flag the
+  // indexer's X-3 reconciliation compares against `Released` logs.
+  destination: string; // where the canonical tokens land (EVM recipient)
+  released: boolean;
+  releaseTxHash: string | null;
+  status: UnwrapStatus;
+  releaseAttempts: number;
+  lastError: string | null;
 }
 
 /** A persisted unwrap awaiting (or past) its EVM release. */
