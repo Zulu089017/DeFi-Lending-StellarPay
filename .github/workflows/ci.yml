@@ -34,6 +34,8 @@ jobs:
     name: Soroban contracts
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: ./contracts } }
+    env:
+      SOROBAN_SDK_BUILD_SYSTEM_SUPPORTS_SPEC_SHAKING_V2: "1"
     steps:
       - uses: actions/checkout@v7
       # soroban-sdk 27 has MSRV 1.91 and its build.rs rejects the
