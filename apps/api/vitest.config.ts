@@ -5,11 +5,13 @@ export default defineConfig({
     globals: false,
     // The `config.ts` Zod schema requires the Stellar / controller fields
     // at module load (`import { config } from "./config.js"` in `index.ts`).
-    // These are set here (applied to each worker before the module graph is
-    // evaluated) so `buildApp` / `PrismaClient` boot successfully even when
-    // `global-setup.ts` (globalSetup) is what normally provides them.
+    // Do NOT set `DATABASE_URL` here: it would override the container URL
+    // that `global-setup.ts` supplies via the fork-pool env, so workers
+    // would point Prisma at the dead `localhost:5432` instead of the
+    // testcontainers Postgres. The Stellar fields are set as harmless
+    // dummies so the schema parses at module load; `global-setup.ts`
+    // supplies the real values for everything the test routes read.
     env: {
-      DATABASE_URL: "postgresql://spg:spg@localhost:5432/spg",
       STELLAR_RPC: "https://horizon-testnet.stellar.org",
       STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
       STELLAR_CONTROLLER: "CABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVWXYZ",

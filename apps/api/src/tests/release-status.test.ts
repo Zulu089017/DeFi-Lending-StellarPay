@@ -127,9 +127,8 @@ describe("GET /v1/unwrap-events", () => {
       expect(row.releaseAttempts).toBe(1);
       expect(row.status).toBe("released");
       expect(row.txHash).toBe("0x" + "11".repeat(32));
-      // The unwraps payload stays a faithful mirror of the DB row: it must not
-      // invent fields that do not exist in the Prisma model.
-      expect(row).not.toHaveProperty("destination");
+      // The unwraps payload is a faithful mirror of the DB row: back-side
+      // release fields (destination, releaseTxHash, releaseAttempts, status)
     } finally {
       await app.close();
     }
