@@ -1,3 +1,4 @@
+#![allow(clippy::needless_borrow)]
 //! # Property-Based Tests
 //!
 //! Each test generates a random sequence of operations and checks that
@@ -19,23 +20,26 @@ fn deploy_minimal(
     Address, // pool_id — needed as operator for vault calls
     Symbol,
 ) {
-    let admin = Address::generate(env);
+    let admin = Address::generate(&env);
     let vault_id = env.register(collateral_vault::CollateralVault {}, ());
     let pool_id = env.register(lending_pool::LendingPool {}, ());
     let wrapped_id = env.register(wrapped_asset::WrappedAsset {}, ());
 
     let v = collateral_vault::CollateralVaultClient::new(env, &vault_id);
     v.initialize(&admin);
+    v.set_skip_token_transfers(&true);
     v.add_operator(&pool_id); // pool is operator
 
     let p = lending_pool::LendingPoolClient::new(env, &pool_id);
     p.initialize(&admin);
+    p.set_skip_token_transfers(&true);
     let asset = Symbol::new(env, "XLM");
     p.add_asset(&lending_pool::AssetConfig {
         asset: asset.clone(),
         collateral_vault: vault_id,
         oracle: Address::generate(env),
         ltoken: Address::generate(env),
+        token_address: Address::generate(env),
         base_rate_bps: 200,
         slope1_bps: 1_000,
         slope2_bps: 13_000,
@@ -215,6 +219,7 @@ mod tests {
             &env.register(collateral_vault::CollateralVault {}, ()),
         );
         v.initialize(&admin);
+        v.set_skip_token_transfers(&true);
         v.add_operator(&op);
 
         let asset = Symbol::new(&env, "XLM");

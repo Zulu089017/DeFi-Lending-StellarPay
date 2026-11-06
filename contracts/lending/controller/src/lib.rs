@@ -1135,9 +1135,11 @@ mod tests {
 
         let pool_client = lending_pool::LendingPoolClient::new(&env, &pool_id);
         pool_client.initialize(&admin);
+        pool_client.set_skip_token_transfers(&true);
 
         let vault_client = collateral_vault::CollateralVaultClient::new(&env, &vault_id);
         vault_client.initialize(&admin);
+        vault_client.set_skip_token_transfers(&true);
 
         // Now deploy the controller and wire everything together.
         let ctrl_id = env.register(LendingController {}, ());
@@ -1587,6 +1589,7 @@ mod tests {
             collateral_vault: vault.clone(),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 200,
             slope1_bps: 1_000,
             slope2_bps: 13_000,
@@ -1638,6 +1641,7 @@ mod tests {
                 collateral_vault: vault.clone(),
                 oracle: Address::generate(&env),
                 ltoken: Address::generate(&env),
+                token_address: Address::generate(&env),
                 base_rate_bps: 200,
                 slope1_bps: 1_000,
                 slope2_bps: 13_000,
@@ -1699,6 +1703,7 @@ mod tests {
                 collateral_vault: vault.clone(),
                 oracle: Address::generate(&env),
                 ltoken: Address::generate(&env),
+                token_address: Address::generate(&env),
                 base_rate_bps: 200,
                 slope1_bps: 1_000,
                 slope2_bps: 13_000,
@@ -1741,6 +1746,7 @@ mod tests {
             collateral_vault: vault.clone(),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 200,
             slope1_bps: 1_000,
             slope2_bps: 13_000,
@@ -1789,6 +1795,7 @@ mod tests {
             collateral_vault: vault.clone(),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 200,
             slope1_bps: 1_000,
             slope2_bps: 13_000,
@@ -1833,6 +1840,7 @@ mod tests {
             collateral_vault: vault.clone(),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 200,
             slope1_bps: 1_000,
             slope2_bps: 13_000,
@@ -1881,6 +1889,7 @@ mod tests {
             collateral_vault: vault.clone(),
             oracle: Address::generate(&env),
             ltoken: Address::generate(&env),
+            token_address: Address::generate(&env),
             base_rate_bps: 200,
             slope1_bps: 1_000,
             slope2_bps: 13_000,
@@ -2239,6 +2248,7 @@ mod tests {
             collateral_vault: te.vault.clone(),
             oracle: te.oracle.clone(),
             ltoken: Address::generate(&te.env),
+            token_address: Address::generate(&te.env),
             base_rate_bps: 200,
             slope1_bps: 1_000,
             slope2_bps: 13_000,

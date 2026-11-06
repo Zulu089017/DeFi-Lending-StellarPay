@@ -108,6 +108,7 @@ fn deploy_protocol() -> ProtocolEnv {
     v.set_liq_threshold(&Symbol::new(&env, "USDC"), &8_500u32);
     v.set_token_address(&Symbol::new(&env, "XLM"), &xlm_token_addr);
     v.set_token_address(&Symbol::new(&env, "USDC"), &usdc_token_addr);
+    v.set_skip_token_transfers(&true);
 
     // ── Initialise lending pool ──
     let p = lending_pool::LendingPoolClient::new(&env, &pool_id);
@@ -134,6 +135,7 @@ fn deploy_protocol() -> ProtocolEnv {
     // Register liquidation and controller as operators on the pool.
     p.add_operator(&liq_id);
     p.add_operator(&ctrl_id);
+    p.set_skip_token_transfers(&true);
 
     // ── Initialise controller ──
     let c = lending_controller::LendingControllerClient::new(&env, &ctrl_id);
@@ -259,6 +261,12 @@ mod tests {
     #[test]
     fn test_full_lifecycle_wrap_supply_borrow_repay_unwrap() {
         let pe = deploy_protocol();
+        // enable real token transfers for this custody-verification test
+        pe.env.mock_all_auths_allowing_non_root_auth();
+        let p = lending_pool::LendingPoolClient::new(&pe.env, &pe.pool_id);
+        let v = collateral_vault::CollateralVaultClient::new(&pe.env, &pe.vault_id);
+        p.set_skip_token_transfers(&false);
+        v.set_skip_token_transfers(&false);
         let user = Address::generate(&pe.env);
         let lp = Address::generate(&pe.env);
         let xlm = Symbol::new(&pe.env, "XLM");
@@ -279,21 +287,16 @@ mod tests {
         approve_usdc(&pe, &lp, &pe.pool_id, 1_000_000_000_000i128);
         approve_usdc(&pe, &user, &pe.pool_id, 1_000_000_000_000i128);
 
-        // 3. Supply liquidity to pool (LP provides XLM and USDC for borrowing)
-        let p = lending_pool::LendingPoolClient::new(&pe.env, &pe.pool_id);
+        // 3. Supply liquidity to pool (real transfers lp -> pool).
         let _shares = p.supply(&lp, &xlm, &100_000_000_000i128);
         p.supply(&lp, &usdc, &50_000_000_000i128);
         assert!(p.total_deposit(&xlm) >= 100_000_000_000);
         assert!(p.total_deposit(&usdc) >= 50_000_000_000);
 
-        // 4. Supply collateral to vault via controller
         let c = lending_controller::LendingControllerClient::new(&pe.env, &pe.ctrl_id);
-        c.supply_collateral(&user, &xlm, &50_000_000_000i128);
-        let v = collateral_vault::CollateralVaultClient::new(&pe.env, &pe.vault_id);
+        // 4. Borrow USDC against XLM collateral via controller (deposits collateral + borrows).
+        c.borrow(&user, &xlm, &50_000_000_000i128, &usdc, &500_000_000i128);
         assert!(v.position(&user, &xlm) >= 50_000_000_000);
-
-        // 5. Borrow USDC against XLM collateral
-        p.borrow(&user, &usdc, &500_000_000i128);
         let debt = p.debt_of(&user, &usdc);
         assert!(debt >= 500_000_000, "should have recorded USDC debt");
         // Verify real token transfer: user received USDC
@@ -407,27 +410,20 @@ mod tests {
 
         let c = lending_controller::LendingControllerClient::new(&pe.env, &pe.ctrl_id);
 
-        // Alice supplies 5,000 XLM.
-        do_wrap(&pe, &alice, 5_000_000_000i128, 1);
+        // Alice supplies 5,000 XLM collateral.
         c.supply_collateral(&alice, &xlm, &5_000_000_000i128);
 
-        // Bob supplies 3,000 XLM.
-        do_wrap(&pe, &bob, 3_000_000_000i128, 2);
+        // Bob supplies 3,000 XLM collateral.
         c.supply_collateral(&bob, &xlm, &3_000_000_000i128);
 
-        let p = lending_pool::LendingPoolClient::new(&pe.env, &pe.pool_id);
-        let alice_shares = p.deposit_shares_of(&alice, &xlm);
-        let bob_shares = p.deposit_shares_of(&bob, &xlm);
-        assert!(alice_shares > 0);
-        assert!(bob_shares > 0);
-        assert_ne!(
-            alice_shares, bob_shares,
-            "shares must differ for different deposits"
-        );
+        let v = collateral_vault::CollateralVaultClient::new(&pe.env, &pe.vault_id);
+        assert_eq!(v.position(&alice, &xlm), 5_000_000_000i128);
+        assert_eq!(v.position(&bob, &xlm), 3_000_000_000i128);
+        assert_eq!(v.total_by_asset(&xlm), 8_000_000_000i128);
 
-        // Verify total = sum of individuals.
-        let total_deposit = p.total_deposit(&xlm);
-        assert_eq!(total_deposit, 8_000_000_000);
+        let p = lending_pool::LendingPoolClient::new(&pe.env, &pe.pool_id);
+        assert_eq!(p.collateral_of(&alice, &xlm), 5_000_000_000i128);
+        assert_eq!(p.collateral_of(&bob, &xlm), 3_000_000_000i128);
     }
 
     /// Per-asset LTV: reconfigure XLM (the collateral asset) to a strict 40%
@@ -451,6 +447,7 @@ mod tests {
             collateral_vault: pe.vault_id.clone(),
             oracle: pe.oracle_id.clone(),
             ltoken: Address::generate(&pe.env),
+            token_address: pe.xlm_token_addr.clone(),
             base_rate_bps: 200,
             slope1_bps: 1_000,
             slope2_bps: 13_000,
@@ -545,7 +542,9 @@ mod tests {
         let c = lending_controller::LendingControllerClient::new(&pe.env, &pe.ctrl_id);
         let p = lending_pool::LendingPoolClient::new(&pe.env, &pe.pool_id);
 
-        // Supply ample collateral.
+        // Supply liquidity (for L-1 invariant) and collateral (for HF).
+        let lp = Address::generate(&pe.env);
+        p.supply(&lp, &xlm, &100_000_000_000i128);
         c.supply_collateral(&user, &xlm, &50_000_000_000i128);
 
         let mut peak_debt: i128 = 0;

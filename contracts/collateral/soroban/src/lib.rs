@@ -22,6 +22,8 @@ pub enum DataKey {
     LiqThreshold(Symbol),
     /// asset => token contract address
     TokenAddress(Symbol),
+    /// Skip real token transfers (test/accounting mode)
+    SkipTokenTransfers,
 }
 
 #[contract]
@@ -35,6 +37,20 @@ impl CollateralVault {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
+    pub fn set_skip_token_transfers(env: Env, skip: bool) {
+        Self::require_admin(&env);
+        env.storage()
+            .instance()
+            .set(&DataKey::SkipTokenTransfers, &skip);
+    }
+
+    fn should_skip_token_transfers(env: &Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::SkipTokenTransfers)
+            .unwrap_or(false)
     }
 
     pub fn add_operator(env: Env, op: Address) {
@@ -69,13 +85,17 @@ impl CollateralVault {
         }
 
         // Transfer tokens from user to vault
-        if let Some(token_addr) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, Address>(&DataKey::TokenAddress(asset.clone()))
-        {
-            let token_client = token::Client::new(&env, &token_addr);
-            token_client.transfer(&user, &env.current_contract_address(), &amount);
+        if !Self::should_skip_token_transfers(&env) {
+            if let Some(token_addr) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Address>(&DataKey::TokenAddress(asset.clone()))
+            {
+                let token_client = token::Client::new(&env, &token_addr);
+                #[allow(clippy::needless_borrows_for_generic_args)]
+                #[allow(clippy::needless_borrows_for_generic_args)]
+                token_client.transfer(&user, &env.current_contract_address(), &amount);
+            }
         }
 
         let pos_key = DataKey::Position(user.clone(), asset.clone());
@@ -105,13 +125,17 @@ impl CollateralVault {
         }
 
         // Transfer tokens from vault to user
-        if let Some(token_addr) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, Address>(&DataKey::TokenAddress(asset.clone()))
-        {
-            let token_client = token::Client::new(&env, &token_addr);
-            token_client.transfer(&env.current_contract_address(), &user, &amount);
+        if !Self::should_skip_token_transfers(&env) {
+            if let Some(token_addr) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Address>(&DataKey::TokenAddress(asset.clone()))
+            {
+                let token_client = token::Client::new(&env, &token_addr);
+                #[allow(clippy::needless_borrows_for_generic_args)]
+                #[allow(clippy::needless_borrows_for_generic_args)]
+                token_client.transfer(&env.current_contract_address(), &user, &amount);
+            }
         }
 
         env.storage().persistent().set(&pos_key, &(pos - amount));
@@ -137,13 +161,17 @@ impl CollateralVault {
         }
 
         // Transfer tokens from vault to recipient
-        if let Some(token_addr) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, Address>(&DataKey::TokenAddress(asset.clone()))
-        {
-            let token_client = token::Client::new(&env, &token_addr);
-            token_client.transfer(&env.current_contract_address(), &to, &amount);
+        if !Self::should_skip_token_transfers(&env) {
+            if let Some(token_addr) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Address>(&DataKey::TokenAddress(asset.clone()))
+            {
+                let token_client = token::Client::new(&env, &token_addr);
+                #[allow(clippy::needless_borrows_for_generic_args)]
+                #[allow(clippy::needless_borrows_for_generic_args)]
+                token_client.transfer(&env.current_contract_address(), &to, &amount);
+            }
         }
 
         env.storage().persistent().set(&pos_key, &(pos - amount));

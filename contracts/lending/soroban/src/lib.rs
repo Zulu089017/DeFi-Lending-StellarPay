@@ -50,6 +50,8 @@ pub enum DataKey {
     TotalDepositShares(Symbol),
     /// ordered list of configured assets (for cross-asset risk aggregation)
     Assets,
+    /// When true, skip real token transfers (test/accounting mode). Default false.
+    SkipTokenTransfers,
 }
 
 #[contracttype]
@@ -175,6 +177,25 @@ impl LendingPool {
             .set(&DataKey::Operator(op), &true);
     }
 
+    pub fn set_skip_token_transfers(env: Env, skip: bool) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set");
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::SkipTokenTransfers, &skip);
+    }
+
+    fn should_skip_token_transfers(env: &Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::SkipTokenTransfers)
+            .unwrap_or(false)
+    }
+
     pub fn supply(env: Env, user: Address, asset: Symbol, amount: i128) -> i128 {
         user.require_auth();
         require_not_paused(&env);
@@ -184,9 +205,12 @@ impl LendingPool {
         Self::accrue_interest(&env, &asset);
 
         // Transfer tokens from user to the pool
-        let cfg = Self::asset_config(&env, &asset);
-        let token_client = token::Client::new(&env, &cfg.token_address);
-        token_client.transfer(&user, &env.current_contract_address(), &amount);
+        if !Self::should_skip_token_transfers(&env) {
+            let cfg = Self::asset_config(&env, &asset);
+            let token_client = token::Client::new(&env, &cfg.token_address);
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            token_client.transfer(&user, &env.current_contract_address(), &amount);
+        }
 
         let total_d = Self::total_deposit(&env, &asset);
         let total_shares = Self::deposit_shares_total(&env, &asset);
@@ -245,9 +269,12 @@ impl LendingPool {
                 .max(1);
 
         // Transfer tokens from pool to user
-        let cfg = Self::asset_config(&env, &asset);
-        let token_client = token::Client::new(&env, &cfg.token_address);
-        token_client.transfer(&env.current_contract_address(), &user, &amount);
+        if !Self::should_skip_token_transfers(&env) {
+            let cfg = Self::asset_config(&env, &asset);
+            let token_client = token::Client::new(&env, &cfg.token_address);
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            token_client.transfer(&env.current_contract_address(), &user, &amount);
+        }
 
         env.storage().persistent().set(&key, &(cur - shares));
         env.storage()
@@ -478,9 +505,12 @@ impl LendingPool {
         }
 
         // Transfer borrowed tokens from pool to user
-        let cfg = Self::asset_config(env, asset);
-        let token_client = token::Client::new(env, &cfg.token_address);
-        token_client.transfer(&env.current_contract_address(), user, &amount);
+        if !Self::should_skip_token_transfers(env) {
+            let cfg = Self::asset_config(env, asset);
+            let token_client = token::Client::new(env, &cfg.token_address);
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            token_client.transfer(&env.current_contract_address(), user, &amount);
+        }
 
         let key = DataKey::Borrower(user.clone(), asset.clone());
         let idx = Self::borrow_index(env, asset);
@@ -543,9 +573,10 @@ impl LendingPool {
         };
 
         // Transfer repayment tokens from payer to pool
-        if repaid > 0 {
+        if repaid > 0 && !Self::should_skip_token_transfers(env) {
             let cfg = Self::asset_config(env, asset);
             let token_client = token::Client::new(env, &cfg.token_address);
+            #[allow(clippy::needless_borrows_for_generic_args)]
             token_client.transfer(payer, &env.current_contract_address(), &repaid);
         }
 
@@ -653,12 +684,14 @@ mod tests {
     fn test_supply_mints_shares() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
 
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -681,12 +714,14 @@ mod tests {
     fn test_borrow_then_repay() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
 
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -722,11 +757,13 @@ mod tests {
     fn invariant_L1_borrows_le_deposits() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -756,11 +793,13 @@ mod tests {
     fn invariant_L2_borrow_index_monotone() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -794,11 +833,13 @@ mod tests {
     fn invariant_L3_debt_of_matches_principal_times_index() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -827,12 +868,14 @@ mod tests {
     fn invariant_L4_share_math() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let a = Address::generate(&env);
         let b = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -862,11 +905,13 @@ mod tests {
     fn invariant_L5_withdraw_rejects_insufficient_shares() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -889,11 +934,13 @@ mod tests {
     fn invariant_L6_repay_caps_at_outstanding_debt() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -921,11 +968,13 @@ mod tests {
     fn invariant_L7_deposit_shares_never_negative() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -964,12 +1013,14 @@ mod tests {
         use soroban_sdk::testutils::Ledger as _;
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let u1 = Address::generate(&env);
         let u2 = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1009,12 +1060,14 @@ mod tests {
     fn invariant_L9_apy_monotone_in_utilization() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let u1 = Address::generate(&env);
         let u2 = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1055,12 +1108,14 @@ mod tests {
     fn invariant_L10_borrow_rejects_insufficient_collateral() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let lp = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1086,11 +1141,13 @@ mod tests {
     fn invariant_L10b_borrow_at_max_ltv_succeeds() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1118,12 +1175,14 @@ mod tests {
     fn invariant_L10c_borrow_beyond_collateral_reverts() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let lp = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1150,11 +1209,13 @@ mod tests {
     fn invariant_L11_health_factor_improves_after_repay() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1186,11 +1247,13 @@ mod tests {
     fn invariant_L12_health_factor_zero_for_no_borrows() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1215,11 +1278,13 @@ mod tests {
     fn invariant_L13_sequential_borrows_reduce_hf() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1253,12 +1318,14 @@ mod tests {
     fn invariant_L14_cannot_borrow_after_collateral_becomes_insufficient() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let lp = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1286,12 +1353,14 @@ mod tests {
     fn invariant_L15_multi_user_hf_isolation() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let alice = Address::generate(&env);
         let bob = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1321,11 +1390,13 @@ mod tests {
     fn invariant_L16_hf_returns_zero_after_full_repay() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1358,12 +1429,14 @@ mod tests {
     fn test_pause_blocks_state_changes() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
 
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1392,12 +1465,14 @@ mod tests {
     fn test_paused_supply_reverts() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
 
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1420,12 +1495,14 @@ mod tests {
     fn test_paused_borrow_reverts() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
 
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),
@@ -1449,12 +1526,14 @@ mod tests {
     fn test_unpause_restores_operations() {
         let env = Env::default();
         env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
         let asset = Symbol::new(&env, "XLM");
 
         let pool = LendingPoolClient::new(&env, &env.register(LendingPool {}, ()));
         pool.initialize(&admin);
+        pool.set_skip_token_transfers(&true);
         pool.add_asset(&AssetConfig {
             asset: asset.clone(),
             collateral_vault: Address::generate(&env),

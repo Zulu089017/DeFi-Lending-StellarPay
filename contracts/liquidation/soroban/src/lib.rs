@@ -357,6 +357,7 @@ mod tests {
         #[allow(dead_code)]
         admin: Address,
         token_addr: Address,
+        #[allow(dead_code)]
         token_admin: Address,
     }
 
