@@ -47,7 +47,7 @@ jobs:
       # --locked forbids, failing the job). The spec-shaking build-script
       # gate is satisfied by the job-level
       # SOROBAN_SDK_BUILD_SYSTEM_SUPPORTS_SPEC_SHAKING_V2 env var.
-      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: dtolnay/rust-toolchain@1.120.0
         with:
           targets: wasm32v1-none
           # Block style is required: the action's `components` input takes a
